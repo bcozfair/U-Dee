@@ -7,6 +7,7 @@ import { useThemeContext } from '../../context/ThemeContext';
 import {
   formatTime,
   loadNotificationSettings,
+  saveNotificationSettings,
   scheduleDailyNotification,
   scheduleDemoNotification,
   toggleNotifications
@@ -38,6 +39,8 @@ export default function SettingsScreen() {
 
   const handleDemoModeToggle = async (value: boolean) => {
     setIsDemoMode(value);
+    await saveNotificationSettings({ isDemoMode: value }); // Save to storage
+
     if (value) {
       // Enable Demo Mode: Schedule every 5 mins
       await scheduleDemoNotification();
@@ -67,6 +70,7 @@ export default function SettingsScreen() {
     setNotificationEnabled(settings.enabled);
     setNotificationHour(settings.hour);
     setNotificationMinute(settings.minute);
+    setIsDemoMode(settings.isDemoMode || false);
   };
 
   const handleNotificationToggle = async (value: boolean) => {
@@ -96,6 +100,12 @@ export default function SettingsScreen() {
     if (notificationEnabled) {
       await scheduleDailyNotification(notificationHour, notificationMinute);
     }
+    // Save settings to storage
+    await saveNotificationSettings({
+      enabled: notificationEnabled,
+      hour: notificationHour,
+      minute: notificationMinute
+    });
     Alert.alert('✅ บันทึกเวลา', `แจ้งเตือนเวลา ${formatTime(notificationHour, notificationMinute)}`);
   };
 
@@ -171,7 +181,7 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#1a1a1a' : '#fff' }} edges={['top']}>
-      <ScrollView flex={1} backgroundColor="$background" showsVerticalScrollIndicator={false}>
+      <ScrollView flex={1} backgroundColor="$background" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
         <YStack padding="$3" gap="$3">
           {/* Header */}
           <YStack>

@@ -1,4 +1,3 @@
-import { CHAT_KEYS, storage } from '../utils/storage';
 
 // Types
 export interface FamilyMember {
@@ -10,147 +9,139 @@ export interface FamilyMember {
     lastCheckIn: string;
     batteryLevel?: number;
     isOnline?: boolean;
+    phoneNumber: string; // New field
+    location: {
+        latitude: number;
+        longitude: number;
+    };
 }
 
-export interface Message {
-    id: string;
-    text: string;
-    senderId: string;
-    timestamp: number;
-    isMine: boolean;
-    type?: 'text' | 'image' | 'location';
-}
+// ... Message interface ...
 
 // Mock Data
+// Coordinates centered around Khlong Luang, Pathum Thani
+const KHLONG_LUANG_LAT = 14.0649;
+const KHLONG_LUANG_LNG = 100.6161;
+
+const getRandomLocation = () => ({
+    latitude: KHLONG_LUANG_LAT + (Math.random() - 0.5) * 0.05, // ~5km radius
+    longitude: KHLONG_LUANG_LNG + (Math.random() - 0.5) * 0.05
+});
+
 export const MOCK_FAMILY_MEMBERS: FamilyMember[] = [
     {
         id: 'mom',
         name: 'แม่ต้อย',
         relationship: 'แม่',
         avatar: '👵',
-        status: 'กำลังดูละคร',
+        status: 'สบายดี',
         lastCheckIn: '10 นาทีที่แล้ว',
         batteryLevel: 85,
-        isOnline: true
+        isOnline: true,
+        phoneNumber: '081-111-1111',
+        location: getRandomLocation()
     },
     {
         id: 'dad',
         name: 'พ่อศักดิ์',
         relationship: 'พ่อ',
         avatar: '👴',
-        status: 'รดน้ำต้นไม้',
+        status: 'อยู่ที่ทำงาน',
         lastCheckIn: '1 ชั่วโมงที่แล้ว',
         batteryLevel: 60,
-        isOnline: false
+        isOnline: false,
+        phoneNumber: '082-222-2222',
+        location: getRandomLocation()
     },
     {
         id: 'sis',
         name: 'น้องดา',
         relationship: 'น้องสาว',
         avatar: '👧',
-        status: 'เรียนพิเศษ',
+        status: 'อยู่โรงเรียน',
         lastCheckIn: '5 ชั่วโมงที่แล้ว',
         batteryLevel: 30,
-        isOnline: true
+        isOnline: true,
+        phoneNumber: '083-333-3333',
+        location: getRandomLocation()
     }
 ];
 
-// Quick Messages
-export const QUICK_MESSAGES = [
-    "กินข้าวยังครับ? 🍚",
-    "ถึงบ้านแล้วนะ 🏠",
-    "สบายดีไหม? 💚",
-    "วันนี้กลับดึกนะ 🌙",
-    "คิดถึงนะครับ ❤️",
-    "โทรหาได้ไหม? 📞"
+// ... (Only keeping FamilyMember related code)
+// The user explicitly asked to remove chat functions.
+
+// Status Options (Simplified for one-tap usage)
+const MOCK_STATUSES = [
+    'สบายดี',
+    'พักผ่อน',
+    'ทำงาน',
+    'เรียน',
+    'เดินทาง',
+    'ท่องเที่ยว',
+    'ออกกำลังกาย',
+    'ทำธุระ',
+    'ทานอาหาร',
+    'อื่นๆ'
 ];
 
-// Mock Bot Responses
-const BOT_RESPONSES = {
-    'mom': [
-        "จ้าลูก แม่เพิ่งกินข้าวเสร็จ",
-        "โอเคจ้ะ ดูแลตัวเองด้วยนะ",
-        "แม่สบายดีจ้ะ ลูกล่ะ?",
-        "รักลูกนะ ❤️",
-        "จ้า อย่านอนดึกล่ะ"
-    ],
-    'dad': [
-        "อืม พ่อกำลังยุ่งอยู่",
-        "โอเค รับทราบ",
-        "ตั้งใจทำงานนะลุก",
-        "เดี๋ยวพ่อโทรกลับ"
-    ],
-    'sis': [
-        "ค่าาา เดี๋ยวคุยนะ",
-        "พี่ซื้อขนมมาฝากด้วยนะ 🍰",
-        "โอเคค่า",
-        "555+ ตลกอะ"
-    ]
-};
+// Generate random check-in time (some > 24 hours)
+const getRandomCheckIn = () => {
+    // 30% chance of being > 24 hours (Emergency/Missing scenario)
+    const isEmergency = Math.random() < 0.3;
 
-// Service Keys
-const CHAT_HISTORY_KEY = 'mock_chat_history_';
+    if (isEmergency) {
+        const days = Math.floor(Math.random() * 5) + 2; // 2-6 days
+        return {
+            text: `${days} วันที่แล้ว`,
+            isOnline: false
+        };
+    } else {
+        const hours = Math.floor(Math.random() * 12);
+        const minutes = Math.floor(Math.random() * 59);
+
+        if (hours === 0) return { text: `${minutes} นาทีที่แล้ว`, isOnline: true };
+        return { text: `${hours} ชม. ${minutes} นาทีที่แล้ว`, isOnline: Math.random() > 0.5 };
+    }
+};
 
 export const getFamilyMembers = async (): Promise<FamilyMember[]> => {
     // Simulate API delay
     await new Promise(resolve => setTimeout(resolve, 500));
-    return MOCK_FAMILY_MEMBERS;
-};
 
-export const getMessages = async (memberId: string): Promise<Message[]> => {
-    const messages = await storage.get<Message[]>(CHAT_KEYS.HISTORY_PREFIX + memberId);
-    return messages || [];
-};
+    // Randomize data on every fetch
+    return MOCK_FAMILY_MEMBERS.map(member => {
+        const timeData = getRandomCheckIn();
+        const isLate = timeData.text.includes('วัน');
 
-export const sendMessage = async (memberId: string, text: string): Promise<Message> => {
-    // 1. Create User Message
-    const userMsg: Message = {
-        id: Date.now().toString(),
-        text,
-        senderId: 'me',
-        timestamp: Date.now(),
-        isMine: true
-    };
-
-    // 2. Save User Message
-    await saveMessage(memberId, userMsg);
-
-    // 3. Trigger Bot Reply (after delay)
-    simulateBotReply(memberId);
-
-    return userMsg;
-};
-
-const saveMessage = async (memberId: string, msg: Message) => {
-    try {
-        const currentMessages = await getMessages(memberId);
-        const updatedMessages = [...currentMessages, msg];
-        await storage.save(CHAT_KEYS.HISTORY_PREFIX + memberId, updatedMessages);
-    } catch (error) {
-        console.error('Error saving message:', error);
-    }
-};
-
-const simulateBotReply = async (memberId: string) => {
-    // Random delay 2-5 seconds
-    const delay = Math.floor(Math.random() * 3000) + 2000;
-
-    setTimeout(async () => {
-        // Pick random response based on member
-        const responses = BOT_RESPONSES[memberId as keyof typeof BOT_RESPONSES] || ["ครับ/ค่ะ"];
-        const randomResponse = responses[Math.floor(Math.random() * responses.length)];
-
-        const botMsg: Message = {
-            id: (Date.now() + 1).toString(),
-            text: randomResponse,
-            senderId: memberId,
-            timestamp: Date.now(),
-            isMine: false
+        return {
+            ...member,
+            status: isLate ? 'สะกิดหน่อย' : MOCK_STATUSES[Math.floor(Math.random() * MOCK_STATUSES.length)],
+            lastCheckIn: timeData.text,
+            isOnline: timeData.isOnline,
+            batteryLevel: Math.floor(Math.random() * 100),
+            location: getRandomLocation() // Refresh location too
         };
+    });
+};
 
-        await saveMessage(memberId, botMsg);
+export const nudgeFamilyMember = async (memberId: string): Promise<{ success: boolean; data?: Partial<FamilyMember> }> => {
+    // Simulate API delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
-        // In a real app, this would trigger an event/listener to update UI
-        // For now, the UI will poll or user has to refresh, or we can use a callback if we refactor
-    }, delay);
+    // 50% chance of success (They see the nudge and check in)
+    const isSuccess = Math.random() > 0.5;
+
+    if (isSuccess) {
+        return {
+            success: true,
+            data: {
+                lastCheckIn: 'เมื่อสักครู่',
+                isOnline: true,
+                status: 'สบายดี',
+                location: getRandomLocation() // Update location too
+            }
+        };
+    }
+
+    return { success: false };
 };

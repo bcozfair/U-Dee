@@ -20,8 +20,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
     const loadTheme = async () => {
         try {
-            const savedTheme = await storage.get<string>(USER_KEYS.DARK_MODE);
-            if (savedTheme === 'true') {
+            const savedTheme = await storage.get<string | boolean>(USER_KEYS.DARK_MODE);
+            if (savedTheme === 'true' || savedTheme === true) {
                 setTheme('dark');
             }
         } catch (error) {

@@ -16,6 +16,7 @@ export const NOTIFICATION_KEYS = {
     ENABLED: 'notification_enabled',
     TIME: 'notification_time',
     ID: 'notification_id',
+    IS_DEMO: 'notification_is_demo',
 };
 
 export const CHAT_KEYS = {

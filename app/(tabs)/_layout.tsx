@@ -1,4 +1,4 @@
-import { Clock, Home, Settings } from '@tamagui/lucide-icons';
+import { Clock, Home, Settings, Users } from '@tamagui/lucide-icons';
 import { Tabs } from 'expo-router';
 import { useThemeContext } from '../../context/ThemeContext';
 
@@ -41,6 +41,20 @@ export default function TabLayout() {
           headerShown: false,
           tabBarIcon: ({ color, focused }) => (
             <Home
+              size={focused ? 28 : 24}
+              color={color as any}
+              strokeWidth={focused ? 2.5 : 2}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="family"
+        options={{
+          title: 'ครอบครัว',
+          headerShown: false,
+          tabBarIcon: ({ color, focused }) => (
+            <Users
               size={focused ? 28 : 24}
               color={color as any}
               strokeWidth={focused ? 2.5 : 2}

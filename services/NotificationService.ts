@@ -17,6 +17,7 @@ export interface NotificationSettings {
     enabled: boolean;
     hour: number;
     minute: number;
+    isDemoMode: boolean;
 }
 
 // Get default notification time (9:00 AM)
@@ -24,6 +25,7 @@ export const getDefaultNotificationSettings = (): NotificationSettings => ({
     enabled: false,
     hour: 9,
     minute: 0,
+    isDemoMode: false,
 });
 
 // Request permission for notifications
@@ -56,18 +58,18 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
 // Load notification settings from AsyncStorage
 export const loadNotificationSettings = async (): Promise<NotificationSettings> => {
     try {
-        const enabled = await storage.get(NOTIFICATION_KEYS.ENABLED);
+        const enabled = await storage.get<string | boolean>(NOTIFICATION_KEYS.ENABLED);
         const timeSettings = await storage.get<{ hour: number, minute: number }>(NOTIFICATION_KEYS.TIME);
+        const isDemo = await storage.get<string | boolean>(NOTIFICATION_KEYS.IS_DEMO);
 
-        if (timeSettings) {
-            return {
-                enabled: enabled === 'true' || enabled === true,
-                hour: timeSettings.hour,
-                minute: timeSettings.minute,
-            };
-        }
+        const defaultSettings = getDefaultNotificationSettings();
 
-        return getDefaultNotificationSettings();
+        return {
+            enabled: enabled === 'true' || enabled === true,
+            hour: timeSettings?.hour ?? defaultSettings.hour,
+            minute: timeSettings?.minute ?? defaultSettings.minute,
+            isDemoMode: isDemo === 'true' || isDemo === true,
+        };
     } catch (error) {
         console.error('Error loading notification settings:', error);
         return getDefaultNotificationSettings();
@@ -75,13 +77,20 @@ export const loadNotificationSettings = async (): Promise<NotificationSettings> 
 };
 
 // Save notification settings
-export const saveNotificationSettings = async (settings: NotificationSettings): Promise<void> => {
+export const saveNotificationSettings = async (settings: Partial<NotificationSettings>): Promise<void> => {
     try {
-        await storage.save(NOTIFICATION_KEYS.ENABLED, settings.enabled.toString());
-        await storage.save(NOTIFICATION_KEYS.TIME, JSON.stringify({
-            hour: settings.hour,
-            minute: settings.minute,
-        }));
+        if (settings.enabled !== undefined) {
+            await storage.save(NOTIFICATION_KEYS.ENABLED, settings.enabled.toString());
+        }
+        if (settings.hour !== undefined && settings.minute !== undefined) {
+            await storage.save(NOTIFICATION_KEYS.TIME, JSON.stringify({
+                hour: settings.hour,
+                minute: settings.minute,
+            }));
+        }
+        if (settings.isDemoMode !== undefined) {
+            await storage.save(NOTIFICATION_KEYS.IS_DEMO, settings.isDemoMode.toString());
+        }
     } catch (error) {
         console.error('Error saving notification settings:', error);
     }
@@ -95,8 +104,8 @@ export const scheduleDemoNotification = async (): Promise<string | null> => {
         // Schedule interval notification (5 minutes = 300 seconds)
         const identifier = await Notifications.scheduleNotificationAsync({
             content: {
-                title: '🔥 DEMO: แจ้งเตือนเช็คอิน',
-                body: 'ครบ 5 นาทีแล้ว! เช็คอินหน่อยคนเก่ง 💚',
+                title: '🔥U-Dee: ครบ 24 ชั่วโมงแล้ว...อยู่ดีใช่มั้ย?',
+                body: 'เช็คอินเพื่อบอกให้เราสบายใจหน่อยนะ💚',
                 sound: true,
                 priority: Notifications.AndroidNotificationPriority.HIGH,
             },

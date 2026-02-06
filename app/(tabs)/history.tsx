@@ -6,45 +6,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card, H1, H2, H3, Paragraph, ScrollView, Separator, Text, XStack, YStack } from 'tamagui';
 import Badges from '../../components/Badges';
 import CalendarHeatmap from '../../components/CalendarHeatmap';
+import HistoryChart from '../../components/HistoryChart';
 import WeeklySummary from '../../components/WeeklySummary';
 import { useThemeContext } from '../../context/ThemeContext';
 import { DATA_KEYS, storage } from '../../utils/storage';
 
-// Helper to calculate streak
-const calculateStreak = (history: any[]): number => {
-  if (!history || history.length === 0) return 0;
-
-  let streak = 0;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const sortedHistory = [...history].sort((a, b) =>
-    new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
-
-  let checkDate = new Date(today);
-
-  for (const record of sortedHistory) {
-    const recordDate = new Date(record.date);
-    recordDate.setHours(0, 0, 0, 0);
-
-    const diffTime = checkDate.getTime() - recordDate.getTime();
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 0) {
-      streak++;
-      checkDate.setDate(checkDate.getDate() - 1);
-    } else if (diffDays === 1) {
-      streak++;
-      checkDate = recordDate;
-      checkDate.setDate(checkDate.getDate() - 1);
-    } else {
-      break;
-    }
-  }
-
-  return streak;
-};
+import { calculateStreak } from '../../utils/checkInLogic';
 
 // Helper to extract date keys from history
 // Note: item.id is a timestamp (Date.now()), so we use it to get the actual date
@@ -256,8 +223,9 @@ export default function HistoryScreen() {
 
         {/* Calendar View */}
         {viewMode === 'calendar' && (
-          <ScrollView showsVerticalScrollIndicator={false}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
             <YStack gap="$3">
+              <HistoryChart history={history} />
               <Card elevation="$1" borderWidth={1} borderColor="$borderColor" padding="$3" backgroundColor="$background">
                 <XStack alignItems="center" gap="$2" marginBottom="$3">
                   <Calendar size={16} color="$blue9" />
@@ -299,7 +267,7 @@ export default function HistoryScreen() {
               keyExtractor={(item) => item.id}
               renderItem={renderItem}
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingBottom: 10 }}
+              contentContainerStyle={{ paddingBottom: 100 }}
             />
           )
         )}

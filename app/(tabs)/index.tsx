@@ -1,14 +1,28 @@
-import { AlertTriangle, MapPin } from '@tamagui/lucide-icons';
+import { AlertTriangle, MapPin, X } from '@tamagui/lucide-icons';
 import * as Location from 'expo-location';
 import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, Modal, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card, H1, H2, H3, Paragraph, ScrollView, Text, XStack, YStack } from 'tamagui';
 import { useThemeContext } from '../../context/ThemeContext';
+import { calculateStreak, getRecordDate } from '../../utils/checkInLogic';
 import { DATA_KEYS, storage, USER_KEYS } from '../../utils/storage';
 
-// Helper function to get greeting based on time of day
+// Status Options
+const STATUS_OPTIONS = [
+  { label: 'สบายดี 💚', value: 'สบายดี' },
+  { label: 'พักผ่อน 🏠', value: 'พักผ่อน' },
+  { label: 'ทำงาน 🏢', value: 'ทำงาน' },
+  { label: 'เรียน 🏫', value: 'เรียน' },
+  { label: 'เดินทาง 🚗', value: 'เดินทาง' },
+  { label: 'ท่องเที่ยว ✈️', value: 'ท่องเที่ยว' },
+  { label: 'ออกกำลังกาย 💪', value: 'ออกกำลังกาย' },
+  { label: 'ทำธุระ 📝', value: 'ทำธุระ' },
+  { label: 'ทานอาหาร 🍽️', value: 'ทานอาหาร' },
+  { label: 'อื่นๆ ❓', value: 'อื่นๆ' },
+];
+
 const getGreeting = (): { text: string; emoji: string } => {
   const hour = new Date().getHours();
   if (hour < 12) return { text: 'สวัสดีตอนเช้า', emoji: '🌅' };
@@ -17,53 +31,7 @@ const getGreeting = (): { text: string; emoji: string } => {
   return { text: 'สวัสดีตอนกลางคืน', emoji: '🌙' };
 };
 
-// Helper function to calculate streak
-const calculateStreak = (history: any[]): number => {
-  if (!history || history.length === 0) return 0;
-
-  let streak = 0;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const sortedHistory = [...history].sort((a, b) =>
-    new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
-
-  let checkDate = new Date(today);
-
-  for (const record of sortedHistory) {
-    const recordDate = new Date(record.date);
-    recordDate.setHours(0, 0, 0, 0);
-
-    const diffTime = checkDate.getTime() - recordDate.getTime();
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 0) {
-      streak++;
-      checkDate.setDate(checkDate.getDate() - 1);
-    } else if (diffDays === 1) {
-      streak++;
-      checkDate = recordDate;
-      checkDate.setDate(checkDate.getDate() - 1);
-    } else {
-      break;
-    }
-  }
-
-  return streak;
-};
-
-// Array of motivational quotes
-const QUOTES = [
-  "☁️ ท้องฟ้าหลังฝน ย่อมสวยงามเสมอ",
-  "🌟 ทุกวันคือโอกาสใหม่ในการเริ่มต้น",
-  "💪 คุณเก่งกว่าที่คุณคิด",
-  "🌈 หลังพายุ มีรุ้งกินน้ำเสมอ",
-  "🌻 ยิ้มให้วันใหม่ แล้ววันนี้จะยิ้มให้คุณ",
-  "❤️ การดูแลตัวเองคือการรักตัวเองที่ดีที่สุด",
-  "✨ ความสุขอยู่ในสิ่งเล็กๆ รอบตัว",
-  "🙏 ขอบคุณที่ยังอยู่ที่นี่",
-];
+const DEFAULT_QUOTE = "ความสุขอยู่ที่ใจเราเอง 😊";
 
 export default function HomeScreen() {
   const [quote, setQuote] = useState("กำลังโหลดกำลังใจ...");
@@ -73,6 +41,10 @@ export default function HomeScreen() {
   const [streak, setStreak] = useState(0);
   const [checkedInToday, setCheckedInToday] = useState(false);
   const [showDangerAlert, setShowDangerAlert] = useState(false);
+
+  // Sheet State
+  const [openSheet, setOpenSheet] = useState(false);
+  const [position, setPosition] = useState(0);
 
   const { isDark } = useThemeContext();
   const { width, height } = useWindowDimensions();
@@ -88,19 +60,19 @@ export default function HomeScreen() {
     }, [])
   );
 
-  // EP5: Fetch - ดึงข้อมูลจาก API
   useEffect(() => {
     const fetchQuote = async () => {
       try {
-        const response = await fetch('https://jsonplaceholder.typicode.com/users/1');
-        await response.json();
-        const randomQuote = QUOTES[Math.floor(Math.random() * QUOTES.length)];
-        setQuote(randomQuote);
+        const response = await fetch('https://raw.githubusercontent.com/bcozfair/U-Dee/refs/heads/master/quotes.json');
+        const data = await response.json();
+        if (data.quotes && data.quotes.length > 0) {
+          const randomQuote = data.quotes[Math.floor(Math.random() * data.quotes.length)];
+          setQuote(randomQuote.text);
+        }
       } catch (err) {
-        console.error(err);
+        setQuote(DEFAULT_QUOTE);
       }
     };
-
     fetchQuote();
   }, []);
 
@@ -118,22 +90,11 @@ export default function HomeScreen() {
       setStreak(currentStreak);
 
       if (history.length > 0) {
-        // ... (Date parsing logic remains same)
-        // ... (We need to copy the logic or assume it's part of replacement. Since I can't put "..." inside replacement logic easily if I replace the whole function, I should include it)
-        // Let's rewrite the logic inside loadStreak
-
         let lastCheckInTime;
         try {
           const latestItem = history[0];
-          const timestamp = parseInt(latestItem.id, 10);
-
-          if (!isNaN(timestamp) && timestamp > 0) {
-            lastCheckInTime = new Date(timestamp);
-          } else {
-            lastCheckInTime = new Date(latestItem.date);
-          }
+          lastCheckInTime = getRecordDate(latestItem);
         } catch (e) {
-          console.log('Error parsing date:', e);
           lastCheckInTime = new Date();
         }
 
@@ -154,26 +115,32 @@ export default function HomeScreen() {
     }
   };
 
-  const handleCheckIn = async () => {
+  const initCheckIn = async () => {
     setLoading(true);
-
     let { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('⚠️ ไม่สามารถเข้าถึง GPS', 'กรุณาเปิดการอนุญาตใช้ตำแหน่ง');
       setLoading(false);
       return;
     }
+    setLoading(false);
+    setOpenSheet(true);
+  };
 
-    let location = await Location.getCurrentPositionAsync({});
-
-    const newRecord = {
-      id: Date.now().toString(),
-      date: new Date().toLocaleString('th-TH'),
-      status: "ฉันสบายดี 💚",
-      coords: location.coords
-    };
+  const confirmCheckIn = async (selectedStatus: string) => {
+    setOpenSheet(false);
+    setLoading(true);
 
     try {
+      let location = await Location.getCurrentPositionAsync({});
+
+      const newRecord = {
+        id: Date.now().toString(),
+        date: new Date().toLocaleString('th-TH'),
+        status: selectedStatus,
+        coords: location.coords
+      };
+
       const history = await storage.get<any[]>(DATA_KEYS.HISTORY_LOG) || [];
       history.unshift(newRecord);
       await storage.save(DATA_KEYS.HISTORY_LOG, history);
@@ -182,25 +149,27 @@ export default function HomeScreen() {
       const newStreak = calculateStreak(history);
       setStreak(newStreak);
       setCheckedInToday(true);
+      setShowDangerAlert(false);
+
+      Alert.alert(
+        "✅ เช็คอินสำเร็จ",
+        `สถานะ: "${selectedStatus}"\n🔥 Streak: ${streak + 1} วัน`,
+        [
+          { text: "📍 ดูตำแหน่ง", onPress: () => router.push('/map') },
+          { text: "ตกลง" }
+        ]
+      );
     } catch (e) {
       console.log(e);
+      Alert.alert("Error", "เกิดข้อผิดพลาดในการบันทึกข้อมูล");
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
-
-    Alert.alert(
-      "✅ เช็คอินสำเร็จ",
-      `คุณได้ส่งสัญญาณ "อยู่ดี" แล้ว\n🔥 Streak: ${streak + 1} วัน`,
-      [
-        { text: "📍 ดูตำแหน่ง", onPress: () => router.push('/map') },
-        { text: "ตกลง" }
-      ]
-    );
   };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#1a1a1a' : '#fff' }} edges={['top']}>
-      <ScrollView flex={1} backgroundColor="$background" showsVerticalScrollIndicator={false}>
+      <ScrollView flex={1} backgroundColor="$background" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
         <YStack flex={1} padding="$4" gap={isSmallScreen ? "$2" : "$3"}>
           {/* Header Section */}
           <XStack alignItems="center" gap="$2">
@@ -287,7 +256,7 @@ export default function HomeScreen() {
                 backgroundColor: checkedInToday ? "$green10" : "$blue10",
                 scale: 0.95
               }}
-              onPress={handleCheckIn}
+              onPress={initCheckIn}
               disabled={loading}
               elevation="$4"
               borderWidth={4}
@@ -299,7 +268,7 @@ export default function HomeScreen() {
                 <YStack alignItems="center" gap="$1">
                   <Text fontSize={buttonSize * 0.28}>{avatar}</Text>
                   <Text fontSize={isSmallScreen ? "$3" : "$4"} fontWeight="700" color="white">
-                    {checkedInToday ? "เช็คอินแล้ว ✓" : "กดเช็คอิน"}
+                    {checkedInToday ? "เช็คอินอีกครั้ง" : "กดเช็คอิน"}
                   </Text>
                 </YStack>
               )}
@@ -310,11 +279,57 @@ export default function HomeScreen() {
           <XStack justifyContent="center" alignItems="center" gap="$2" paddingBottom="$2">
             <MapPin size={14} color="$gray9" />
             <Paragraph size="$2" color="$gray9" textAlign="center">
-              กดปุ่มเพื่อส่งสัญญาณ "อยู่ดี"
+              กดปุ่มเพื่อระบุสถานะและตำแหน่งของคุณ
             </Paragraph>
           </XStack>
         </YStack>
       </ScrollView>
+
+      {/* Status Selection Modal */}
+      <Modal
+        visible={openSheet}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setOpenSheet(false)}
+      >
+        <YStack flex={1} justifyContent="flex-end" backgroundColor="rgba(0,0,0,0.5)">
+          <YStack
+            backgroundColor="$background"
+            borderTopLeftRadius="$4"
+            borderTopRightRadius="$4"
+            padding="$4"
+            gap="$4"
+            width="100%"
+            minHeight={300}
+          >
+            <XStack justifyContent="space-between" alignItems="center">
+              <H3 fontSize="$6" color="$color">วันนี้เป็นยังไงบ้าง?</H3>
+              <Button size="$3" circular chromeless onPress={() => setOpenSheet(false)}>
+                <X size={24} color="$gray10" />
+              </Button>
+            </XStack>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <XStack gap="$3" flexWrap="wrap" justifyContent="center" paddingBottom="$4">
+                {STATUS_OPTIONS.map((option) => (
+                  <Button
+                    key={option.value}
+                    width="47%"
+                    height={60}
+                    backgroundColor="$blue2"
+                    borderColor="$blue5"
+                    borderWidth={1}
+                    onPress={() => confirmCheckIn(option.value)}
+                    pressStyle={{ backgroundColor: "$blue4" }}
+                  >
+                    <Text fontSize={16} fontWeight="600" color="$blue11">{option.label}</Text>
+                  </Button>
+                ))}
+              </XStack>
+            </ScrollView>
+          </YStack>
+        </YStack>
+      </Modal>
     </SafeAreaView>
   );
 }
