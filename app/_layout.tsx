@@ -1,24 +1,41 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { TamaguiProvider, Theme } from 'tamagui';
+import { ThemeProvider, useThemeContext } from '../context/ThemeContext';
+import appConfig from '../tamagui.config';
 
-import { useColorScheme } from '@/hooks/use-color-scheme';
-
-export const unstable_settings = {
-  anchor: '(tabs)',
-};
-
-export default function RootLayout() {
-  const colorScheme = useColorScheme();
+function RootLayoutNav() {
+  const { theme, isDark } = useThemeContext();
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-      </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+    <TamaguiProvider config={appConfig} defaultTheme={theme}>
+      <Theme name={theme}>
+        <StatusBar style={isDark ? 'light' : 'dark'} />
+        <Stack>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="map"
+            options={{
+              title: 'ตำแหน่งของฉัน',
+              headerStyle: {
+                backgroundColor: isDark ? '#1a1a1a' : '#ffffff',
+              },
+              headerTintColor: isDark ? '#ffffff' : '#1a1a1a',
+            }}
+          />
+        </Stack>
+      </Theme>
+    </TamaguiProvider>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <RootLayoutNav />
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }
