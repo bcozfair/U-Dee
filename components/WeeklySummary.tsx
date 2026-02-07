@@ -42,12 +42,21 @@ const getPreviousWeekRange = () => {
     return { startOfWeek: prevStart, endOfWeek: prevEnd };
 };
 
-// Count check-ins in a date range
+// Count unique days with check-ins in a date range
 const countCheckInsInRange = (history: any[], start: Date, end: Date): number => {
-    return history.filter(item => {
-        const date = new Date(item.date);
-        return date >= start && date <= end;
-    }).length;
+    const uniqueDays = new Set<string>();
+
+    history.forEach(item => {
+        const timestamp = parseInt(item.id, 10);
+        if (isNaN(timestamp)) return;
+
+        const date = new Date(timestamp);
+        if (date >= start && date <= end) {
+            uniqueDays.add(date.toDateString());
+        }
+    });
+
+    return uniqueDays.size;
 };
 
 // Calculate days left in week

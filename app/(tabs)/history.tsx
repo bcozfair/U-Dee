@@ -1,12 +1,12 @@
 import { Calendar, Grid, List, MapPin, Trash2 } from '@tamagui/lucide-icons';
 import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { Alert, FlatList, useWindowDimensions } from 'react-native';
+import { FlatList, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card, H1, H2, H3, Paragraph, ScrollView, Separator, Text, XStack, YStack } from 'tamagui';
+import { AlertModal } from '../../components/AlertModal';
 import Badges from '../../components/Badges';
 import CalendarHeatmap from '../../components/CalendarHeatmap';
-import HistoryChart from '../../components/HistoryChart';
 import WeeklySummary from '../../components/WeeklySummary';
 import { useThemeContext } from '../../context/ThemeContext';
 import { DATA_KEYS, storage } from '../../utils/storage';
@@ -46,6 +46,26 @@ export default function HistoryScreen() {
   const [streak, setStreak] = useState(0);
   const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
 
+  // Alert Modal State
+  const [alertConfig, setAlertConfig] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    type: 'success' | 'error' | 'warning' | 'info';
+    onConfirm: () => void;
+    confirmText: string;
+    cancelText: string;
+    confirmIcon?: React.ReactNode;
+  }>({
+    visible: false,
+    title: '',
+    message: '',
+    type: 'info',
+    onConfirm: () => { },
+    confirmText: 'ตกลง',
+    cancelText: 'ยกเลิก'
+  });
+
   const { isDark } = useThemeContext();
   const { height } = useWindowDimensions();
   const isSmallScreen = height < 700;
@@ -65,34 +85,40 @@ export default function HistoryScreen() {
   };
 
   const deleteItem = async (id: string) => {
-    Alert.alert("🗑️ ลบรายการ", "คุณแน่ใจหรือไม่?", [
-      { text: "ยกเลิก", style: "cancel" },
-      {
-        text: "ลบ",
-        style: "destructive",
-        onPress: async () => {
-          const newHistory = history.filter(item => item.id !== id);
-          await storage.save(DATA_KEYS.HISTORY_LOG, newHistory);
-          setHistory(newHistory);
-          setStreak(calculateStreak(newHistory));
-        }
+    setAlertConfig({
+      visible: true,
+      title: "🗑️ ลบรายการ",
+      message: "คุณแน่ใจหรือไม่ที่จะลบรายการนี้?",
+      type: 'warning',
+      confirmText: 'ลบ',
+      cancelText: 'ยกเลิก',
+      confirmIcon: <Trash2 size={20} color="white" />,
+      onConfirm: async () => {
+        const newHistory = history.filter(item => item.id !== id);
+        await storage.save(DATA_KEYS.HISTORY_LOG, newHistory);
+        setHistory(newHistory);
+        setStreak(calculateStreak(newHistory));
+        setAlertConfig(prev => ({ ...prev, visible: false }));
       }
-    ]);
+    });
   };
 
   const clearAll = async () => {
-    Alert.alert("⚠️ ลบทั้งหมด", "คุณแน่ใจหรือไม่?", [
-      { text: "ยกเลิก", style: "cancel" },
-      {
-        text: "ลบทั้งหมด",
-        style: "destructive",
-        onPress: async () => {
-          await storage.remove(DATA_KEYS.HISTORY_LOG);
-          setHistory([]);
-          setStreak(0);
-        }
+    setAlertConfig({
+      visible: true,
+      title: "⚠️ ลบทั้งหมด",
+      message: "ประวัติการเช็คอินทั้งหมดจะหายไป คุณแน่ใจหรือไม่?",
+      type: 'error',
+      confirmText: 'ลบทั้งหมด',
+      cancelText: 'ยกเลิก',
+      confirmIcon: <Trash2 size={20} color="white" />,
+      onConfirm: async () => {
+        await storage.remove(DATA_KEYS.HISTORY_LOG);
+        setHistory([]);
+        setStreak(0);
+        setAlertConfig(prev => ({ ...prev, visible: false }));
       }
-    ]);
+    });
   };
 
   const renderItem = ({ item, index }: { item: HistoryItem; index: number }) => (
@@ -225,7 +251,6 @@ export default function HistoryScreen() {
         {viewMode === 'calendar' && (
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
             <YStack gap="$3">
-              <HistoryChart history={history} />
               <Card elevation="$1" borderWidth={1} borderColor="$borderColor" padding="$3" backgroundColor="$background">
                 <XStack alignItems="center" gap="$2" marginBottom="$3">
                   <Calendar size={16} color="$blue9" />
@@ -273,6 +298,18 @@ export default function HistoryScreen() {
         )}
 
       </YStack>
+
+      <AlertModal
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
+        onConfirm={alertConfig.onConfirm}
+        onCancel={() => setAlertConfig(prev => ({ ...prev, visible: false }))}
+        confirmText={alertConfig.confirmText}
+        cancelText={alertConfig.cancelText}
+        confirmIcon={alertConfig.confirmIcon}
+      />
     </SafeAreaView>
   );
 }

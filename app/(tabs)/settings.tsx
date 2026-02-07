@@ -1,8 +1,9 @@
 import { Bell, Check, Moon, Palette, Phone, Sun, User } from '@tamagui/lucide-icons';
 import React, { useEffect, useState } from 'react';
-import { Alert, TextInput, useWindowDimensions } from 'react-native';
+import { TextInput, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card, H1, H2, H3, Paragraph, ScrollView, Switch, Text, useTheme, XStack, YStack } from 'tamagui';
+import { AlertModal } from '../../components/AlertModal';
 import { useThemeContext } from '../../context/ThemeContext';
 import {
   formatTime,
@@ -37,6 +38,34 @@ export default function SettingsScreen() {
   const [notificationMinute, setNotificationMinute] = useState<number>(0);
   const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
 
+  // Alert Modal State
+  const [alertConfig, setAlertConfig] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    type: 'info' as 'success' | 'error' | 'warning' | 'info',
+    onConfirm: () => { },
+    singleAction: true,
+    confirmText: 'ตกลง',
+    cancelText: 'ยกเลิก'
+  });
+
+  const showAlert = (title: string, message: string, type: 'success' | 'error' | 'warning' | 'info' = 'info', singleAction = true, onConfirm = () => { }) => {
+    setAlertConfig({
+      visible: true,
+      title,
+      message,
+      type,
+      singleAction,
+      onConfirm: () => {
+        onConfirm();
+        setAlertConfig(prev => ({ ...prev, visible: false }));
+      },
+      confirmText: 'ตกลง',
+      cancelText: 'ยกเลิก'
+    });
+  };
+
   const handleDemoModeToggle = async (value: boolean) => {
     setIsDemoMode(value);
     await saveNotificationSettings({ isDemoMode: value }); // Save to storage
@@ -44,12 +73,12 @@ export default function SettingsScreen() {
     if (value) {
       // Enable Demo Mode: Schedule every 5 mins
       await scheduleDemoNotification();
-      Alert.alert('⚡ เปิดโหมดสาธิต', 'ระบบจะแจ้งเตือนทุกๆ 5 นาที เพื่อทดสอบการทำงาน');
+      showAlert('⚡ เปิดโหมดสาธิต', 'ระบบจะแจ้งเตือนทุกๆ 5 นาที เพื่อทดสอบการทำงาน', 'warning');
     } else {
       // Disable Demo Mode: Revert to daily schedule
       if (notificationEnabled) {
         await scheduleDailyNotification(notificationHour, notificationMinute);
-        Alert.alert('✅ ปิดโหมดสาธิต', `กลับสู่การแจ้งเตือนปกติเวลา ${formatTime(notificationHour, notificationMinute)}`);
+        showAlert('✅ ปิดโหมดสาธิต', `กลับสู่การแจ้งเตือนปกติเวลา ${formatTime(notificationHour, notificationMinute)}`, 'success');
       }
     }
   };
@@ -77,12 +106,13 @@ export default function SettingsScreen() {
     const success = await toggleNotifications(value, notificationHour, notificationMinute);
     if (success) {
       setNotificationEnabled(value);
-      Alert.alert(
+      showAlert(
         value ? '🔔 เปิดแจ้งเตือน' : '🔕 ปิดแจ้งเตือน',
-        value ? `จะแจ้งเตือนทุกวันเวลา ${formatTime(notificationHour, notificationMinute)}` : 'ปิดการแจ้งเตือนแล้ว'
+        value ? `จะแจ้งเตือนทุกวันเวลา ${formatTime(notificationHour, notificationMinute)}` : 'ปิดการแจ้งเตือนแล้ว',
+        value ? 'success' : 'info'
       );
     } else {
-      Alert.alert('❌ ไม่สามารถตั้งค่าได้', 'กรุณาอนุญาตการแจ้งเตือนในตั้งค่าเครื่อง');
+      showAlert('❌ ไม่สามารถตั้งค่าได้', 'กรุณาอนุญาตการแจ้งเตือนในตั้งค่าเครื่อง', 'error');
     }
   };
 
@@ -106,7 +136,7 @@ export default function SettingsScreen() {
       hour: notificationHour,
       minute: notificationMinute
     });
-    Alert.alert('✅ บันทึกเวลา', `แจ้งเตือนเวลา ${formatTime(notificationHour, notificationMinute)}`);
+    showAlert('✅ บันทึกเวลา', `แจ้งเตือนเวลา ${formatTime(notificationHour, notificationMinute)}`, 'success');
   };
 
   const loadSettings = async () => {
@@ -127,9 +157,9 @@ export default function SettingsScreen() {
     try {
       await storage.save(USER_KEYS.AVATAR, icon);
       setSelectedAvatar(icon);
-      Alert.alert('✅ สำเร็จ', 'เปลี่ยนตัวแทนเรียบร้อย');
+      showAlert('✅ สำเร็จ', 'เปลี่ยนตัวแทนเรียบร้อย', 'success');
     } catch (error) {
-      Alert.alert('❌ ผิดพลาด', 'ไม่สามารถบันทึกได้');
+      showAlert('❌ ผิดพลาด', 'ไม่สามารถบันทึกได้', 'error');
     }
   };
 
@@ -137,44 +167,55 @@ export default function SettingsScreen() {
     try {
       await storage.save(USER_KEYS.NAME, userName);
       setIsEditing(false);
-      Alert.alert('✅ สำเร็จ', 'บันทึกชื่อเรียบร้อย');
+      showAlert('✅ สำเร็จ', 'บันทึกชื่อเรียบร้อย', 'success');
     } catch (error) {
-      Alert.alert('❌ ผิดพลาด', 'ไม่สามารถบันทึกได้');
+      showAlert('❌ ผิดพลาด', 'ไม่สามารถบันทึกได้', 'error');
     }
   };
 
   const saveEmergencyContact = async () => {
     try {
       await storage.save(USER_KEYS.EMERGENCY_CONTACT, emergencyContact);
-      Alert.alert('✅ สำเร็จ', 'บันทึกเบอร์ฉุกเฉินเรียบร้อย');
+      showAlert('✅ สำเร็จ', 'บันทึกเบอร์ฉุกเฉินเรียบร้อย', 'success');
     } catch (error) {
-      Alert.alert('❌ ผิดพลาด', 'ไม่สามารถบันทึกได้');
+      showAlert('❌ ผิดพลาด', 'ไม่สามารถบันทึกได้', 'error');
     }
   };
 
   const resetSettings = async () => {
-    Alert.alert('⚠️ รีเซ็ตการตั้งค่า', 'ข้อมูลทั้งหมดจะถูกลบ', [
-      { text: 'ยกเลิก', style: 'cancel' },
-      {
-        text: 'รีเซ็ต',
-        style: 'destructive',
-        onPress: async () => {
-          await storage.multiRemove([
-            USER_KEYS.AVATAR,
-            USER_KEYS.NAME,
-            USER_KEYS.EMERGENCY_CONTACT,
-            USER_KEYS.DARK_MODE,
-            DATA_KEYS.HISTORY_LOG,
-            DATA_KEYS.LAST_LOCATION
-          ]);
-          setSelectedAvatar('👦');
-          setUserName('ผู้ใช้งาน');
-          setEmergencyContact('');
-          if (isDark) toggleTheme(); // Reset to light mode
-          Alert.alert('✅ สำเร็จ', 'รีเซ็ตเรียบร้อย');
-        },
+    setAlertConfig({
+      visible: true,
+      title: '⚠️ รีเซ็ตการตั้งค่า',
+      message: 'ข้อมูลทั้งหมดจะถูกลบรวมถึงประวัติและข้อมูลส่วนตัว คุณแน่ใจหรือไม่?',
+      type: 'error',
+      singleAction: false,
+      confirmText: 'รีเซ็ต',
+      cancelText: 'ยกเลิก',
+      onConfirm: async () => {
+        await storage.multiRemove([
+          USER_KEYS.AVATAR,
+          USER_KEYS.NAME,
+          USER_KEYS.EMERGENCY_CONTACT,
+          USER_KEYS.DARK_MODE,
+          DATA_KEYS.HISTORY_LOG,
+          DATA_KEYS.LAST_LOCATION
+        ]);
+        setSelectedAvatar('👦');
+        setUserName('ผู้ใช้งาน');
+        setEmergencyContact('');
+        if (isDark) toggleTheme(); // Reset to light mode
+        setAlertConfig({
+          visible: true,
+          title: '✅ สำเร็จ',
+          message: 'รีเซ็ตเรียบร้อยแล้ว',
+          type: 'success',
+          singleAction: true,
+          confirmText: 'ตกลง',
+          cancelText: 'ยกเลิก',
+          onConfirm: () => setAlertConfig(prev => ({ ...prev, visible: false }))
+        });
       },
-    ]);
+    });
   };
 
   const selectedAvatarObj = AVATARS.find(a => a.icon === selectedAvatar);
@@ -437,6 +478,18 @@ export default function SettingsScreen() {
           </YStack>
         </YStack>
       </ScrollView>
+
+      <AlertModal
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
+        onConfirm={alertConfig.onConfirm}
+        onCancel={() => setAlertConfig(prev => ({ ...prev, visible: false }))}
+        confirmText={alertConfig.confirmText}
+        cancelText={alertConfig.cancelText}
+        singleAction={alertConfig.singleAction}
+      />
     </SafeAreaView>
   );
 }

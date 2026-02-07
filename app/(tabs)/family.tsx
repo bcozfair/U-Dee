@@ -1,17 +1,26 @@
 import { Battery, Hand, MapPin, Phone } from '@tamagui/lucide-icons';
 import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { Alert, Linking, useWindowDimensions } from 'react-native';
+import { Linking, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card, H1, H3, Paragraph, ScrollView, Text, XStack, YStack } from 'tamagui';
+import { NoResponseModal } from '../../components/NoResponseModal';
+import { NudgeConfirmationModal } from '../../components/NudgeConfirmationModal';
 import { useThemeContext } from '../../context/ThemeContext';
+import { useToast } from '../../context/ToastContext';
 import { FamilyMember, getFamilyMembers, nudgeFamilyMember } from '../../services/MockFamilyService';
 
 export default function FamilyScreen() {
+    const { showToast } = useToast();
     const [members, setMembers] = useState<FamilyMember[]>([]);
     const { isDark } = useThemeContext();
     const { height } = useWindowDimensions();
     const isSmallScreen = height < 700;
+
+    // Nudge Modal State
+    const [nudgeModalVisible, setNudgeModalVisible] = useState(false);
+    const [noResponseModalVisible, setNoResponseModalVisible] = useState(false);
+    const [selectedMember, setSelectedMember] = useState<FamilyMember | null>(null);
 
     useFocusEffect(
         useCallback(() => {
@@ -23,29 +32,23 @@ export default function FamilyScreen() {
         Linking.openURL(`tel:${phoneNumber}`);
     };
 
-    const handleNudge = async (memberId: string) => {
-        Alert.alert(
-            "👋 ส่งการสะกิด",
-            "ต้องการส่งสัญญาณสะกิดไปหาคนนี้หรือไม่?",
-            [
-                { text: "ยกเลิก", style: "cancel" },
-                {
-                    text: "สะกิดเลย",
-                    onPress: async () => {
-                        const result = await nudgeFamilyMember(memberId);
-                        if (result.success && result.data) {
-                            Alert.alert("✅ สำเร็จ", "เขาตอบกลับมาแล้ว! สถานะอัปเดตเป็น 'เมื่อสักครู่'");
-                            setMembers(prev => prev.map(m => m.id === memberId ? { ...m, ...result.data } : m));
-                        } else {
-                            Alert.alert("⚠️ ไม่มีการตอบรับ", "เขาไม่ตอบกลับการสะกิด กรุณาโทรติดต่อทันที", [
-                                { text: "ตกลง" },
-                                { text: "โทรเลย", onPress: () => handleCall(members.find(m => m.id === memberId)?.phoneNumber || "") }
-                            ]);
-                        }
-                    }
-                }
-            ]
-        );
+    const openNudgeModal = (member: FamilyMember) => {
+        setSelectedMember(member);
+        setNudgeModalVisible(true);
+    };
+
+    const confirmNudge = async () => {
+        if (!selectedMember) return;
+        setNudgeModalVisible(false);
+
+        const result = await nudgeFamilyMember(selectedMember.id);
+        if (result.success && result.data) {
+            showToast("เขาตอบกลับมาแล้ว! สถานะอัปเดตเป็น 'เมื่อสักครู่'", 'success');
+            setMembers(prev => prev.map(m => m.id === selectedMember.id ? { ...m, ...result.data } : m));
+        } else {
+            // Show Custom Modal instead of Alert
+            setNoResponseModalVisible(true);
+        }
     };
 
     const loadMembers = async () => {
@@ -138,6 +141,7 @@ export default function FamilyScreen() {
                                                 <Text fontSize={10} color="$gray10">{member.relationship}</Text>
                                             </XStack>
 
+                                            {/* Battery and Phone logic skipped for brevity, keeping original structure is key */}
                                             {member.batteryLevel !== undefined && (
                                                 <XStack alignItems="center" gap="$1">
                                                     <Battery size={12} color={getBatteryColor(member.batteryLevel)} />
@@ -161,7 +165,7 @@ export default function FamilyScreen() {
                                                 circular
                                                 chromeless
                                                 backgroundColor="$orange2"
-                                                onPress={() => handleNudge(member.id)}
+                                                onPress={() => openNudgeModal(member)}
                                             >
                                                 <Hand size={18} color="$orange9" />
                                             </Button>
@@ -210,6 +214,30 @@ export default function FamilyScreen() {
                         </Button>
                     </YStack>
                 </ScrollView>
+
+                {/* Nudge Confirmation Modal */}
+                <NudgeConfirmationModal
+                    visible={nudgeModalVisible}
+                    member={selectedMember}
+                    onClose={() => setNudgeModalVisible(false)}
+                    onConfirm={confirmNudge}
+                    onCall={() => {
+                        if (selectedMember) handleCall(selectedMember.phoneNumber);
+                    }}
+                />
+
+                {/* No Response Modal */}
+                <NoResponseModal
+                    visible={noResponseModalVisible}
+                    member={selectedMember}
+                    onClose={() => setNoResponseModalVisible(false)}
+                    onCall={() => {
+                        if (selectedMember) {
+                            setNoResponseModalVisible(false);
+                            handleCall(selectedMember.phoneNumber);
+                        }
+                    }}
+                />
             </YStack>
         </SafeAreaView>
     );

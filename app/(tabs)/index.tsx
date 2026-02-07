@@ -1,11 +1,12 @@
 import { AlertTriangle, MapPin, X } from '@tamagui/lucide-icons';
 import * as Location from 'expo-location';
-import { router, useFocusEffect } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Modal, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card, H1, H2, H3, Paragraph, ScrollView, Text, XStack, YStack } from 'tamagui';
 import { useThemeContext } from '../../context/ThemeContext';
+import { useToast } from '../../context/ToastContext';
 import { calculateStreak, getRecordDate } from '../../utils/checkInLogic';
 import { DATA_KEYS, storage, USER_KEYS } from '../../utils/storage';
 
@@ -34,6 +35,7 @@ const getGreeting = (): { text: string; emoji: string } => {
 const DEFAULT_QUOTE = "ความสุขอยู่ที่ใจเราเอง 😊";
 
 export default function HomeScreen() {
+  const { showToast } = useToast();
   const [quote, setQuote] = useState("กำลังโหลดกำลังใจ...");
   const [loading, setLoading] = useState(false);
   const [avatar, setAvatar] = useState("😊");
@@ -41,6 +43,7 @@ export default function HomeScreen() {
   const [streak, setStreak] = useState(0);
   const [checkedInToday, setCheckedInToday] = useState(false);
   const [showDangerAlert, setShowDangerAlert] = useState(false);
+  const [recentHistory, setRecentHistory] = useState<any[]>([]);
 
   // Sheet State
   const [openSheet, setOpenSheet] = useState(false);
@@ -86,6 +89,7 @@ export default function HomeScreen() {
   const loadStreak = async () => {
     const history = await storage.get<any[]>(DATA_KEYS.HISTORY_LOG);
     if (history) {
+      setRecentHistory(history.slice(0, 3)); // Get top 3
       const currentStreak = calculateStreak(history);
       setStreak(currentStreak);
 
@@ -119,7 +123,7 @@ export default function HomeScreen() {
     setLoading(true);
     let { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('⚠️ ไม่สามารถเข้าถึง GPS', 'กรุณาเปิดการอนุญาตใช้ตำแหน่ง');
+      showToast('กรุณาเปิดการอนุญาตใช้ตำแหน่ง', 'error');
       setLoading(false);
       return;
     }
@@ -144,6 +148,7 @@ export default function HomeScreen() {
       const history = await storage.get<any[]>(DATA_KEYS.HISTORY_LOG) || [];
       history.unshift(newRecord);
       await storage.save(DATA_KEYS.HISTORY_LOG, history);
+      setRecentHistory(history.slice(0, 3)); // Update recent list
       await storage.save(DATA_KEYS.LAST_LOCATION, location.coords);
 
       const newStreak = calculateStreak(history);
@@ -151,17 +156,10 @@ export default function HomeScreen() {
       setCheckedInToday(true);
       setShowDangerAlert(false);
 
-      Alert.alert(
-        "✅ เช็คอินสำเร็จ",
-        `สถานะ: "${selectedStatus}"\n🔥 Streak: ${streak + 1} วัน`,
-        [
-          { text: "📍 ดูตำแหน่ง", onPress: () => router.push('/map') },
-          { text: "ตกลง" }
-        ]
-      );
+      showToast(`เช็คอิน: "${selectedStatus}" เรียบร้อย!`, 'success');
     } catch (e) {
       console.log(e);
-      Alert.alert("Error", "เกิดข้อผิดพลาดในการบันทึกข้อมูล");
+      showToast("เกิดข้อผิดพลาดในการบันทึกข้อมูล", 'error');
     } finally {
       setLoading(false);
     }
@@ -169,8 +167,9 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#1a1a1a' : '#fff' }} edges={['top']}>
-      <ScrollView flex={1} backgroundColor="$background" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
-        <YStack flex={1} padding="$4" gap={isSmallScreen ? "$2" : "$3"}>
+      <YStack flex={1} padding="$4" gap="$2" justifyContent="space-between">
+        {/* Top Section */}
+        <YStack gap="$2">
           {/* Header Section */}
           <XStack alignItems="center" gap="$2">
             <Text fontSize={isSmallScreen ? "$6" : "$8"}>{greeting.emoji}</Text>
@@ -185,12 +184,12 @@ export default function HomeScreen() {
             elevation="$1"
             borderWidth={1}
             borderColor="$borderColor"
-            padding={isSmallScreen ? "$3" : "$4"}
+            padding={isSmallScreen ? "$2" : "$3"}
             backgroundColor="$blue2"
             borderLeftWidth={4}
             borderLeftColor="$blue9"
           >
-            <Paragraph size={isSmallScreen ? "$3" : "$4"} color="$blue11" fontStyle="italic" textAlign="center">
+            <Paragraph size={isSmallScreen ? "$2" : "$3"} color="$blue11" fontStyle="italic" textAlign="center" numberOfLines={2}>
               {quote}
             </Paragraph>
           </Card>
@@ -201,25 +200,24 @@ export default function HomeScreen() {
               elevation="$1"
               borderWidth={1}
               borderColor="$red6"
-              padding={isSmallScreen ? "$3" : "$4"}
+              padding={isSmallScreen ? "$2" : "$3"}
               backgroundColor="$red2"
-              marginBottom="$2"
             >
               <XStack alignItems="center" gap="$3">
                 <YStack
                   backgroundColor="$red9"
-                  width={40}
-                  height={40}
-                  borderRadius={20}
+                  width={32}
+                  height={32}
+                  borderRadius={16}
                   justifyContent="center"
                   alignItems="center"
                 >
-                  <AlertTriangle size={24} color="white" />
+                  <AlertTriangle size={18} color="white" />
                 </YStack>
                 <YStack flex={1}>
-                  <H3 color="$red10" fontSize={isSmallScreen ? "$4" : "$5"}>แจ้งเตือน!</H3>
-                  <Paragraph size="$2" color="$red10">
-                    คุณไม่ได้เช็คอินมานานกว่า 24 ชั่วโมง กรุณากดปุ่มเพื่อส่งสัญญาณว่า "อยู่ดี"
+                  <H3 color="$red10" fontSize={isSmallScreen ? "$3" : "$4"}>แจ้งเตือน!</H3>
+                  <Paragraph size="$1" color="$red10" numberOfLines={2}>
+                    คุณไม่ได้เช็คอินมานานกว่า 24 ชั่วโมง
                   </Paragraph>
                 </YStack>
               </XStack>
@@ -230,60 +228,96 @@ export default function HomeScreen() {
           <Card
             elevation="$1"
             borderWidth={1}
-            padding={isSmallScreen ? "$3" : "$4"}
+            padding={isSmallScreen ? "$2" : "$3"}
             backgroundColor={streak > 0 ? "$orange2" : "$gray2"}
             borderColor={streak > 0 ? "$orange6" : "$gray6"}
           >
             <XStack alignItems="center" justifyContent="center" gap="$3">
-              <Text fontSize={isSmallScreen ? "$7" : "$9"}>🔥</Text>
+              <Text fontSize={isSmallScreen ? "$6" : "$8"}>🔥</Text>
               <YStack alignItems="center">
-                <H1 fontSize={isSmallScreen ? "$8" : "$10"} fontWeight="800" color={streak > 0 ? "$orange10" : "$gray10"}>
+                <H1 fontSize={isSmallScreen ? "$7" : "$9"} fontWeight="800" color={streak > 0 ? "$orange10" : "$gray10"}>
                   {streak}
                 </H1>
                 <Paragraph size={isSmallScreen ? "$2" : "$3"} color="$gray10">วันติดต่อกัน</Paragraph>
               </YStack>
             </XStack>
           </Card>
+        </YStack>
 
-          {/* Check-in Button */}
-          <YStack flex={1} minHeight={buttonSize + 80} alignItems="center" justifyContent="center" paddingVertical="$4">
-            <Button
-              width={buttonSize}
-              height={buttonSize}
-              borderRadius={buttonSize / 2}
-              backgroundColor={checkedInToday ? "$green9" : "$blue9"}
-              pressStyle={{
-                backgroundColor: checkedInToday ? "$green10" : "$blue10",
-                scale: 0.95
-              }}
-              onPress={initCheckIn}
-              disabled={loading}
-              elevation="$4"
-              borderWidth={4}
-              borderColor={checkedInToday ? "$green6" : "$blue6"}
-            >
-              {loading ? (
-                <ActivityIndicator size="large" color="white" />
-              ) : (
-                <YStack alignItems="center" gap="$1">
-                  <Text fontSize={buttonSize * 0.28}>{avatar}</Text>
-                  <Text fontSize={isSmallScreen ? "$3" : "$4"} fontWeight="700" color="white">
-                    {checkedInToday ? "เช็คอินอีกครั้ง" : "กดเช็คอิน"}
-                  </Text>
-                </YStack>
-              )}
-            </Button>
-          </YStack>
+        {/* Check-in Button (Center) */}
+        <YStack flex={1} alignItems="center" justifyContent="center">
+          <Button
+            width={buttonSize}
+            height={buttonSize}
+            borderRadius={buttonSize / 2}
+            backgroundColor={checkedInToday ? "$green9" : "$blue9"}
+            pressStyle={{
+              backgroundColor: checkedInToday ? "$green10" : "$blue10",
+              scale: 0.95
+            }}
+            onPress={initCheckIn}
+            disabled={loading}
+            elevation="$4"
+            borderWidth={4}
+            borderColor={checkedInToday ? "$green6" : "$blue6"}
+          >
+            {loading ? (
+              <ActivityIndicator size="large" color="white" />
+            ) : (
+              <YStack alignItems="center" gap="$1">
+                <Text fontSize={buttonSize * 0.28}>{avatar}</Text>
+                <Text fontSize={isSmallScreen ? "$3" : "$4"} fontWeight="700" color="white">
+                  {checkedInToday ? "เช็คอินอีกครั้ง" : "กดเช็คอิน"}
+                </Text>
+              </YStack>
+            )}
+          </Button>
+        </YStack>
+
+        {/* Bottom Section */}
+        <YStack gap="$2" justifyContent="flex-end">
+          {/* Recent Check-ins */}
+          {recentHistory.length > 0 && (
+            <YStack gap="$2">
+              <H3 color="$gray10" fontSize="$3" marginLeft="$2">เช็คอินล่าสุด</H3>
+              <YStack gap="$2">
+                {recentHistory.slice(0, 2).map((item, index) => (
+                  <Card
+                    key={item.id}
+                    elevation="$1"
+                    backgroundColor="$background"
+                    paddingHorizontal="$3"
+                    paddingVertical="$2"
+                    borderRadius="$3"
+                    borderWidth={1}
+                    borderColor="$borderColor"
+                    borderLeftWidth={4}
+                    borderLeftColor={index === 0 ? "$green9" : "$gray5"}
+                  >
+                    <XStack justifyContent="space-between" alignItems="center">
+                      <XStack alignItems="center" gap="$3">
+                        <Text fontSize="$5">{STATUS_OPTIONS.find(s => s.value === item.status)?.label.split(' ')[1] || '❓'}</Text>
+                        <XStack gap="$2" alignItems="center">
+                          <Paragraph fontWeight="600" color="$color" size="$2">{item.status}</Paragraph>
+                          <Paragraph size="$1" color="$gray9">| {item.date.split(' ')[1]}</Paragraph>
+                        </XStack>
+                      </XStack>
+                    </XStack>
+                  </Card>
+                ))}
+              </YStack>
+            </YStack>
+          )}
 
           {/* Footer hint */}
-          <XStack justifyContent="center" alignItems="center" gap="$2" paddingBottom="$2">
-            <MapPin size={14} color="$gray9" />
-            <Paragraph size="$2" color="$gray9" textAlign="center">
+          <XStack justifyContent="center" alignItems="center" gap="$2" paddingBottom="$1" opacity={0.6}>
+            <MapPin size={12} color="$gray9" />
+            <Paragraph size="$1" color="$gray9" textAlign="center">
               กดปุ่มเพื่อระบุสถานะและตำแหน่งของคุณ
             </Paragraph>
           </XStack>
         </YStack>
-      </ScrollView>
+      </YStack>
 
       {/* Status Selection Modal */}
       <Modal

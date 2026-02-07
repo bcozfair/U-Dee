@@ -1,5 +1,6 @@
 import { Clock, Home, Settings, Users } from '@tamagui/lucide-icons';
 import { Tabs } from 'expo-router';
+import { Platform } from 'react-native';
 import { useThemeContext } from '../../context/ThemeContext';
 
 export default function TabLayout() {
@@ -20,8 +21,8 @@ export default function TabLayout() {
           backgroundColor: tabBarBg,
           borderTopColor: borderColor,
           borderTopWidth: 1,
-          height: 60,
-          paddingBottom: 8,
+          height: Platform.OS === 'android' ? 75 : 60,
+          paddingBottom: Platform.OS === 'android' ? 15 : 8,
           paddingTop: 8,
         },
         tabBarLabelStyle: {
