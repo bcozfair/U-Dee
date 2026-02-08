@@ -16,7 +16,6 @@ export const NOTIFICATION_KEYS = {
     ENABLED: 'notification_enabled',
     TIME: 'notification_time',
     ID: 'notification_id',
-    IS_DEMO: 'notification_is_demo',
 };
 
 export const CHAT_KEYS = {
@@ -34,6 +33,9 @@ export const storage = {
      */
     save: async (key: string, value: any): Promise<boolean> => {
         try {
+            if (value === null || value === undefined) {
+                return false;
+            }
             const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
             await AsyncStorage.setItem(key, stringValue);
             return true;

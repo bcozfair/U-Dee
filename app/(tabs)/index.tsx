@@ -2,9 +2,10 @@ import { AlertTriangle, MapPin, X } from '@tamagui/lucide-icons';
 import * as Location from 'expo-location';
 import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Modal, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Modal, Image as RNImage, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card, H1, H2, H3, Paragraph, ScrollView, Text, XStack, YStack } from 'tamagui';
+import { HistoryItemCard } from '../../components/HistoryItemCard';
 import { useThemeContext } from '../../context/ThemeContext';
 import { useToast } from '../../context/ToastContext';
 import { calculateStreak, getRecordDate } from '../../utils/checkInLogic';
@@ -166,7 +167,7 @@ export default function HomeScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#1a1a1a' : '#fff' }} edges={['top']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#1a1a1a' : '#fff' }} edges={['top', 'bottom']}>
       <YStack flex={1} padding="$4" gap="$2" justifyContent="space-between">
         {/* Top Section */}
         <YStack gap="$2">
@@ -265,7 +266,14 @@ export default function HomeScreen() {
               <ActivityIndicator size="large" color="white" />
             ) : (
               <YStack alignItems="center" gap="$1">
-                <Text fontSize={buttonSize * 0.28}>{avatar}</Text>
+                {(avatar.startsWith('http') || avatar.startsWith('file')) ? (
+                  <RNImage
+                    source={{ uri: avatar }}
+                    style={{ width: buttonSize * 0.4, height: buttonSize * 0.4, borderRadius: buttonSize * 0.2, marginBottom: 8 }}
+                  />
+                ) : (
+                  <Text fontSize={buttonSize * 0.28}>{avatar}</Text>
+                )}
                 <Text fontSize={isSmallScreen ? "$3" : "$4"} fontWeight="700" color="white">
                   {checkedInToday ? "เช็คอินอีกครั้ง" : "กดเช็คอิน"}
                 </Text>
@@ -282,28 +290,12 @@ export default function HomeScreen() {
               <H3 color="$gray10" fontSize="$3" marginLeft="$2">เช็คอินล่าสุด</H3>
               <YStack gap="$2">
                 {recentHistory.slice(0, 2).map((item, index) => (
-                  <Card
+                  <HistoryItemCard
                     key={item.id}
-                    elevation="$1"
-                    backgroundColor="$background"
-                    paddingHorizontal="$3"
-                    paddingVertical="$2"
-                    borderRadius="$3"
-                    borderWidth={1}
-                    borderColor="$borderColor"
-                    borderLeftWidth={4}
-                    borderLeftColor={index === 0 ? "$green9" : "$gray5"}
-                  >
-                    <XStack justifyContent="space-between" alignItems="center">
-                      <XStack alignItems="center" gap="$3">
-                        <Text fontSize="$5">{STATUS_OPTIONS.find(s => s.value === item.status)?.label.split(' ')[1] || '❓'}</Text>
-                        <XStack gap="$2" alignItems="center">
-                          <Paragraph fontWeight="600" color="$color" size="$2">{item.status}</Paragraph>
-                          <Paragraph size="$1" color="$gray9">| {item.date.split(' ')[1]}</Paragraph>
-                        </XStack>
-                      </XStack>
-                    </XStack>
-                  </Card>
+                    item={item}
+                    index={index}
+                    showDelete={false}
+                  />
                 ))}
               </YStack>
             </YStack>

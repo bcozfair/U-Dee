@@ -1,74 +1,169 @@
-import { Battery, Hand, MapPin, Phone } from '@tamagui/lucide-icons';
+import { MapPin, Users } from '@tamagui/lucide-icons';
 import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { Linking, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, Card, H1, H3, Paragraph, ScrollView, Text, XStack, YStack } from 'tamagui';
-import { NoResponseModal } from '../../components/NoResponseModal';
-import { NudgeConfirmationModal } from '../../components/NudgeConfirmationModal';
+import { Avatar, Button, Card, H1, H3, Paragraph, ScrollView, Spinner, XStack, YStack } from 'tamagui';
+import { AlertModal } from '../../components/AlertModal';
+import { useAuth } from '../../context/AuthContext';
 import { useThemeContext } from '../../context/ThemeContext';
 import { useToast } from '../../context/ToastContext';
-import { FamilyMember, getFamilyMembers, nudgeFamilyMember } from '../../services/MockFamilyService';
+
+import { FamilyMember, FamilyService } from '../../services/FamilyService';
 
 export default function FamilyScreen() {
     const { showToast } = useToast();
     const [members, setMembers] = useState<FamilyMember[]>([]);
+    const [hasFamily, setHasFamily] = useState<boolean | null>(null); // null = loading
+    const [familyName, setFamilyName] = useState<string>('');
+    const [inviteCode, setInviteCode] = useState<string>('');
     const { isDark } = useThemeContext();
     const { height } = useWindowDimensions();
     const isSmallScreen = height < 700;
+    const { session } = useAuth();
+    const [loading, setLoading] = useState(true);
 
-    // Nudge Modal State
-    const [nudgeModalVisible, setNudgeModalVisible] = useState(false);
-    const [noResponseModalVisible, setNoResponseModalVisible] = useState(false);
-    const [selectedMember, setSelectedMember] = useState<FamilyMember | null>(null);
+    // Alert Modal Configuration
+    const [alertConfig, setAlertConfig] = useState<{
+        visible: boolean;
+        title: string;
+        message: string;
+        type?: 'success' | 'error' | 'warning' | 'info' | 'custom';
+        onConfirm?: () => void;
+        onCancel?: () => void;
+        confirmText?: string;
+        cancelText?: string;
+        singleAction?: boolean;
+        confirmIcon?: any;
+        cancelIcon?: any;
+        customIcon?: React.ReactNode;
+        customIconColor?: { bg: string; border: string };
+        additionalContent?: React.ReactNode;
+        confirmButtonColor?: string;
+        cancelButtonColor?: string;
+    }>({
+        visible: false,
+        title: '',
+        message: '',
+        type: 'info',
+        onConfirm: () => { },
+        onCancel: () => { },
+    });
+
+    const closeAlert = () => {
+        setAlertConfig(prev => ({ ...prev, visible: false }));
+    };
 
     useFocusEffect(
         useCallback(() => {
-            loadMembers();
-        }, [])
+            if (session?.user) {
+                loadFamilyData();
+            }
+        }, [session])
     );
 
-    const handleCall = (phoneNumber: string) => {
-        Linking.openURL(`tel:${phoneNumber}`);
-    };
+    const loadFamilyData = async () => {
+        setLoading(true);
+        try {
+            // 1. Get my families
+            const families = await FamilyService.getMyFamilies();
 
-    const openNudgeModal = (member: FamilyMember) => {
-        setSelectedMember(member);
-        setNudgeModalVisible(true);
-    };
+            if (!families || families.length === 0) {
+                setHasFamily(false);
+                setLoading(false);
+                return;
+            }
 
-    const confirmNudge = async () => {
-        if (!selectedMember) return;
-        setNudgeModalVisible(false);
+            // For now, take the first family
+            const currentFamily = families[0];
+            setHasFamily(true);
+            setFamilyName(currentFamily.name);
+            setInviteCode(currentFamily.invite_code);
 
-        const result = await nudgeFamilyMember(selectedMember.id);
-        if (result.success && result.data) {
-            showToast("เขาตอบกลับมาแล้ว! สถานะอัปเดตเป็น 'เมื่อสักครู่'", 'success');
-            setMembers(prev => prev.map(m => m.id === selectedMember.id ? { ...m, ...result.data } : m));
-        } else {
-            // Show Custom Modal instead of Alert
-            setNoResponseModalVisible(true);
+            // 2. Get members
+            const allMembers = await FamilyService.getFamilyMembers();
+            // Filter for this family
+            const familyMembers = allMembers.filter(m => m.family_id === currentFamily.id);
+            setMembers(familyMembers);
+
+        } catch (error: any) {
+            console.error('Error loading family:', error);
+            showToast('เกิดข้อผิดพลาดในการโหลดข้อมูลครอบครัว', 'error');
+        } finally {
+            setLoading(false);
         }
     };
 
-    const loadMembers = async () => {
-        const data = await getFamilyMembers();
-        setMembers(data);
+    const handleCall = (phoneNumber: string) => {
+        // In real app, phone number should be in profile. 
+        // For now, if no phone number, alert/toast
+        if (phoneNumber) {
+            Linking.openURL(`tel:${phoneNumber}`);
+        } else {
+            showToast('ไม่พบเบอร์โทรศัพท์', 'error');
+        }
     };
 
-    const getBatteryColor = (level: number) => {
-        if (level > 50) return '$green9';
-        if (level > 20) return '$yellow9';
-        return '$red9';
+    // --- Modal Logic (Simplified for now) ---
+    const openNudgeModal = (member: FamilyMember) => {
+        // Implement real Nudge logic via Edge Function or Realtime later
+        showToast(`สะกิด ${member.name} แล้ว!`, 'success');
     };
+
+    if (loading) {
+        return (
+            <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#1a1a1a' : '#fff' }}>
+                <YStack flex={1} justifyContent="center" alignItems="center">
+                    <Spinner size="large" color="$blue10" />
+                </YStack>
+            </SafeAreaView>
+        );
+    }
+
+    if (hasFamily === false) {
+        return (
+            <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#1a1a1a' : '#fff' }}>
+                <YStack flex={1} padding="$4" justifyContent="center" alignItems="center" gap="$4">
+                    <YStack alignItems="center" marginBottom="$4">
+                        <Users size={64} color="$blue10" />
+                        <H3 textAlign="center" marginTop="$4">คุณยังไม่มีกลุ่มครอบครัว</H3>
+                        <Paragraph textAlign="center" color="$gray10">
+                            สร้างกลุ่มใหม่หรือเข้าร่วมกลุ่มที่มีอยู่เพื่อเริ่มใช้งาน
+                        </Paragraph>
+                    </YStack>
+
+                    <Button
+                        theme="active"
+                        size="$5"
+                        width="100%"
+                        onPress={() => router.push('/family/create')}
+                    >
+                        สร้างครอบครัวใหม่
+                    </Button>
+
+                    <Button
+                        variant="outlined"
+                        size="$5"
+                        width="100%"
+                        onPress={() => router.push('/family/join')}
+                    >
+                        เข้าร่วมครอบครัว
+                    </Button>
+                </YStack>
+            </SafeAreaView>
+        );
+    }
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#1a1a1a' : '#fff' }} edges={['top']}>
             <YStack flex={1} backgroundColor="$background" padding="$3">
                 {/* Header */}
                 <YStack marginBottom="$4">
-                    <H1 fontSize={isSmallScreen ? "$6" : "$8"} fontWeight="800" color="$color">👨‍👩‍👧‍👦 ครอบครัว</H1>
-                    <Paragraph size="$1" color="$gray10">คนที่คุณรักและห่วงใย</Paragraph>
+                    <H1 fontSize={isSmallScreen ? "$6" : "$8"} fontWeight="800" color="$color">👨‍👩‍👧‍👦 {familyName}</H1>
+                    <XStack justifyContent="space-between" alignItems="center">
+                        <Paragraph size="$1" color="$gray10">สมาชิก {members.length} คน</Paragraph>
+                        <Paragraph size="$1" color="$blue10">รหัสเชิญ: {inviteCode}</Paragraph>
+                    </XStack>
                 </YStack>
 
                 <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
@@ -83,114 +178,40 @@ export default function FamilyScreen() {
                                 backgroundColor="$background"
                                 pressStyle={{ scale: 0.98 }}
                                 onPress={() => router.push({
-                                    pathname: '/map',
+                                    pathname: '/(tabs)/map',
                                     params: { memberId: member.id }
                                 })}
                             >
                                 <XStack alignItems="center" gap="$3">
-                                    {/* Avatar & Online Status */}
-                                    <YStack>
-                                        <YStack
-                                            width={50}
-                                            height={50}
-                                            borderRadius={25}
-                                            backgroundColor="$gray3"
-                                            alignItems="center"
-                                            justifyContent="center"
-                                            overflow="hidden"
-                                        >
-                                            <Text fontSize={30}>{member.avatar}</Text>
-                                        </YStack>
-                                        {member.isOnline && (
-                                            <YStack
-                                                position="absolute"
-                                                bottom={0}
-                                                right={0}
-                                                width={14}
-                                                height={14}
-                                                borderRadius={7}
-                                                backgroundColor="$green9"
-                                                borderWidth={2}
-                                                borderColor="$background"
-                                            />
-                                        )}
-                                    </YStack>
+                                    {/* Avatar */}
+                                    <Avatar circular size="$4">
+                                        <Avatar.Image src={member.avatar || 'https://i.pravatar.cc/300'} />
+                                        <Avatar.Fallback backgroundColor="$gray5" />
+                                    </Avatar>
 
                                     {/* Info */}
                                     <YStack flex={1} gap="$1">
                                         <XStack justifyContent="space-between" alignItems="center">
                                             <H3 fontSize="$4" color="$color">{member.name}</H3>
-                                            <Paragraph
-                                                size="$1"
-                                                color={member.lastCheckIn.includes('วัน') ? '$red10' : '$gray9'}
-                                                fontWeight={member.lastCheckIn.includes('วัน') ? '700' : '400'}
-                                            >
-                                                {member.lastCheckIn}
-                                            </Paragraph>
                                         </XStack>
 
                                         <XStack alignItems="center" gap="$2">
-                                            {member.lastCheckIn.includes('วัน') && <Text fontSize={16}>⚠️</Text>}
-                                            <Paragraph size="$2" color={member.status === 'สะกิดหน่อย' ? '$orange10' : '$gray10'} numberOfLines={1}>
-                                                {member.status}
+                                            <Paragraph size="$2" color={member.status === 'Safe' ? '$green10' : '$orange10'} numberOfLines={1}>
+                                                {member.status || 'Active'}
                                             </Paragraph>
-                                        </XStack>
-
-                                        <XStack alignItems="center" gap="$2" marginTop="$1">
-                                            <XStack alignItems="center" gap="$1" backgroundColor="$gray2" paddingHorizontal="$2" paddingVertical={2} borderRadius="$2">
-                                                <Text fontSize={10} color="$gray10">{member.relationship}</Text>
-                                            </XStack>
-
-                                            {/* Battery and Phone logic skipped for brevity, keeping original structure is key */}
-                                            {member.batteryLevel !== undefined && (
-                                                <XStack alignItems="center" gap="$1">
-                                                    <Battery size={12} color={getBatteryColor(member.batteryLevel)} />
-                                                    <Text fontSize={10} color={getBatteryColor(member.batteryLevel)}>{member.batteryLevel}%</Text>
-                                                </XStack>
-                                            )}
-
-                                            <XStack alignItems="center" gap="$1" marginLeft="$2">
-                                                <Phone size={10} color="$gray9" />
-                                                <Text fontSize={10} color="$gray9">{member.phoneNumber}</Text>
-                                            </XStack>
                                         </XStack>
                                     </YStack>
 
                                     {/* Action Icons */}
                                     <XStack gap="$2" alignItems="center">
-                                        {/* Nudge Button */}
-                                        {member.lastCheckIn.includes('วัน') && (
-                                            <Button
-                                                size="$3"
-                                                circular
-                                                chromeless
-                                                backgroundColor="$orange2"
-                                                onPress={() => openNudgeModal(member)}
-                                            >
-                                                <Hand size={18} color="$orange9" />
-                                            </Button>
-                                        )}
-
-                                        {/* Call Button (Only if missing/late) */}
-                                        {member.lastCheckIn.includes('วัน') && (
-                                            <Button
-                                                size="$3"
-                                                circular
-                                                chromeless
-                                                backgroundColor="$red2"
-                                                onPress={() => handleCall(member.phoneNumber)}
-                                            >
-                                                <Phone size={18} color="$red9" />
-                                            </Button>
-                                        )}
-
+                                        {/* Map Button */}
                                         <Button
                                             size="$3"
                                             circular
                                             chromeless
                                             backgroundColor="$blue2"
                                             onPress={() => router.push({
-                                                pathname: '/map',
+                                                pathname: '/(tabs)/map',
                                                 params: { memberId: member.id }
                                             })}
                                         >
@@ -200,43 +221,27 @@ export default function FamilyScreen() {
                                 </XStack>
                             </Card>
                         ))}
-
-                        {/* Invite Button */}
-                        <Button
-                            size="$4"
-                            variant="outlined"
-                            borderColor="$blue9"
-                            marginTop="$2"
-                            onPress={() => alert('ฟีเจอร์นี้ยังไม่เปิดใช้งาน')}
-                            borderStyle="dashed"
-                        >
-                            <Text color="$blue9">+ เพิ่มสมาชิกครอบครัว</Text>
-                        </Button>
                     </YStack>
                 </ScrollView>
 
-                {/* Nudge Confirmation Modal */}
-                <NudgeConfirmationModal
-                    visible={nudgeModalVisible}
-                    member={selectedMember}
-                    onClose={() => setNudgeModalVisible(false)}
-                    onConfirm={confirmNudge}
-                    onCall={() => {
-                        if (selectedMember) handleCall(selectedMember.phoneNumber);
-                    }}
-                />
-
-                {/* No Response Modal */}
-                <NoResponseModal
-                    visible={noResponseModalVisible}
-                    member={selectedMember}
-                    onClose={() => setNoResponseModalVisible(false)}
-                    onCall={() => {
-                        if (selectedMember) {
-                            setNoResponseModalVisible(false);
-                            handleCall(selectedMember.phoneNumber);
-                        }
-                    }}
+                {/* Unified Alert Modal */}
+                <AlertModal
+                    visible={alertConfig.visible}
+                    title={alertConfig.title}
+                    message={alertConfig.message}
+                    type={alertConfig.type}
+                    onConfirm={alertConfig.onConfirm}
+                    onCancel={alertConfig.onCancel}
+                    confirmText={alertConfig.confirmText}
+                    cancelText={alertConfig.cancelText}
+                    singleAction={alertConfig.singleAction}
+                    confirmIcon={alertConfig.confirmIcon}
+                    cancelIcon={alertConfig.cancelIcon}
+                    customIcon={alertConfig.customIcon}
+                    customIconColor={alertConfig.customIconColor}
+                    additionalContent={alertConfig.additionalContent}
+                    confirmButtonColor={alertConfig.confirmButtonColor}
+                    cancelButtonColor={alertConfig.cancelButtonColor}
                 />
             </YStack>
         </SafeAreaView>

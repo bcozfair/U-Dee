@@ -1,30 +1,22 @@
-import { Bell, Check, Moon, Palette, Phone, Sun, User } from '@tamagui/lucide-icons';
+import { Bell, Camera, Check, LogOut, Moon, Phone, Sun } from '@tamagui/lucide-icons';
+import * as ImagePicker from 'expo-image-picker';
 import React, { useEffect, useState } from 'react';
-import { TextInput, useWindowDimensions } from 'react-native';
+import { Switch, TextInput, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, Card, H1, H2, H3, Paragraph, ScrollView, Switch, Text, useTheme, XStack, YStack } from 'tamagui';
+import { Avatar, Button, Card, H2, H3, Paragraph, Text, useTheme, XStack, YStack } from 'tamagui';
 import { AlertModal } from '../../components/AlertModal';
+import { TimeSelectorModal } from '../../components/TimeSelectorModal';
+import { useAuth } from '../../context/AuthContext';
 import { useThemeContext } from '../../context/ThemeContext';
 import {
   formatTime,
   loadNotificationSettings,
   saveNotificationSettings,
   scheduleDailyNotification,
-  scheduleDemoNotification,
   toggleNotifications
 } from '../../services/NotificationService';
+import { UserService } from '../../services/UserService';
 import { DATA_KEYS, storage, USER_KEYS } from '../../utils/storage';
-
-const AVATARS = [
-  { id: '1', icon: '👦', name: 'เด็กชาย', color: '#FF6B9D' },
-  { id: '2', icon: '👧', name: 'เด็กหญิง', color: '#FFA7A7' },
-  { id: '3', icon: '👴', name: 'คุณปู่', color: '#9B59B6' },
-  { id: '4', icon: '👵', name: 'คุณย่า', color: '#E8DAEF' },
-  { id: '5', icon: '🐱', name: 'แมว', color: '#F39C12' },
-  { id: '6', icon: '🐶', name: 'สุนัข', color: '#3498DB' },
-  { id: '7', icon: '🦊', name: 'จิ้งจอก', color: '#E74C3C' },
-  { id: '8', icon: '🐼', name: 'แพนด้า', color: '#2C3E50' },
-];
 
 export default function SettingsScreen() {
   const [selectedAvatar, setSelectedAvatar] = useState<string>('👦');
@@ -36,7 +28,7 @@ export default function SettingsScreen() {
   const [notificationEnabled, setNotificationEnabled] = useState<boolean>(false);
   const [notificationHour, setNotificationHour] = useState<number>(9);
   const [notificationMinute, setNotificationMinute] = useState<number>(0);
-  const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
+
 
   // Alert Modal State
   const [alertConfig, setAlertConfig] = useState({
@@ -49,6 +41,37 @@ export default function SettingsScreen() {
     confirmText: 'ตกลง',
     cancelText: 'ยกเลิก'
   });
+
+  // Time Selector State
+  const [timeSelector, setTimeSelector] = useState<{
+    visible: boolean;
+    type: 'hour' | 'minute';
+    title: string;
+    data: number[];
+  }>({
+    visible: false,
+    type: 'hour',
+    title: '',
+    data: []
+  });
+
+  const openTimeSelector = (type: 'hour' | 'minute') => {
+    setTimeSelector({
+      visible: true,
+      type,
+      title: type === 'hour' ? 'เลือกชั่วโมง' : 'เลือกนาที',
+      data: type === 'hour' ? Array.from({ length: 24 }, (_, i) => i) : Array.from({ length: 60 }, (_, i) => i)
+    });
+  };
+
+  const handleTimeSelect = (value: number) => {
+    if (timeSelector.type === 'hour') {
+      setNotificationHour(value);
+    } else {
+      setNotificationMinute(value);
+    }
+    setTimeSelector(prev => ({ ...prev, visible: false }));
+  };
 
   const showAlert = (title: string, message: string, type: 'success' | 'error' | 'warning' | 'info' = 'info', singleAction = true, onConfirm = () => { }) => {
     setAlertConfig({
@@ -66,40 +89,27 @@ export default function SettingsScreen() {
     });
   };
 
-  const handleDemoModeToggle = async (value: boolean) => {
-    setIsDemoMode(value);
-    await saveNotificationSettings({ isDemoMode: value }); // Save to storage
 
-    if (value) {
-      // Enable Demo Mode: Schedule every 5 mins
-      await scheduleDemoNotification();
-      showAlert('⚡ เปิดโหมดสาธิต', 'ระบบจะแจ้งเตือนทุกๆ 5 นาที เพื่อทดสอบการทำงาน', 'warning');
-    } else {
-      // Disable Demo Mode: Revert to daily schedule
-      if (notificationEnabled) {
-        await scheduleDailyNotification(notificationHour, notificationMinute);
-        showAlert('✅ ปิดโหมดสาธิต', `กลับสู่การแจ้งเตือนปกติเวลา ${formatTime(notificationHour, notificationMinute)}`, 'success');
-      }
-    }
-  };
 
   const { isDark, toggleTheme } = useThemeContext();
+  const { signOut, user } = useAuth();
   const theme = useTheme();
   const { width, height } = useWindowDimensions();
   const isSmallScreen = height < 700;
   const avatarButtonSize = Math.floor((width - 48) / 4) - 8;
 
   useEffect(() => {
-    loadSettings();
+    if (user) {
+      loadSettings(user.id);
+    }
     loadNotificationState();
-  }, []);
+  }, [user]);
 
   const loadNotificationState = async () => {
     const settings = await loadNotificationSettings();
     setNotificationEnabled(settings.enabled);
     setNotificationHour(settings.hour);
     setNotificationMinute(settings.minute);
-    setIsDemoMode(settings.isDemoMode || false);
   };
 
   const handleNotificationToggle = async (value: boolean) => {
@@ -118,10 +128,10 @@ export default function SettingsScreen() {
 
   const adjustTime = (type: 'hour' | 'minute', delta: number) => {
     if (type === 'hour') {
-      const newHour = Math.max(0, Math.min(23, notificationHour + delta));
+      const newHour = (notificationHour + delta + 24) % 24;
       setNotificationHour(newHour);
     } else {
-      const newMinute = Math.max(0, Math.min(59, notificationMinute + delta));
+      const newMinute = (notificationMinute + delta + 60) % 60;
       setNotificationMinute(newMinute);
     }
   };
@@ -139,44 +149,83 @@ export default function SettingsScreen() {
     showAlert('✅ บันทึกเวลา', `แจ้งเตือนเวลา ${formatTime(notificationHour, notificationMinute)}`, 'success');
   };
 
-  const loadSettings = async () => {
+  const loadSettings = async (userId: string) => {
     try {
-      const avatar = await storage.get<string>(USER_KEYS.AVATAR);
-      const name = await storage.get<string>(USER_KEYS.NAME);
-      const contact = await storage.get<string>(USER_KEYS.EMERGENCY_CONTACT);
-
-      if (avatar) setSelectedAvatar(avatar);
-      if (name) setUserName(name);
-      if (contact) setEmergencyContact(contact);
+      const profile = await UserService.getProfile(userId);
+      if (profile) {
+        setSelectedAvatar(profile.avatar_url || 'https://i.pravatar.cc/300');
+        setUserName(profile.username);
+        setEmergencyContact(profile.emergency_contact || '');
+      }
     } catch (error) {
       console.error('Error loading settings:', error);
     }
   };
 
-  const saveAvatar = async (icon: string) => {
+  const pickImage = async () => {
+    if (!user) return;
+
+    // Request permissions
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      showAlert('❌ ต้องการสิทธิ์', 'กรุณาอนุญาตให้เข้าถึงคลังภาพเพื่อเปลี่ยนรูปโปรไฟล์', 'warning');
+      return;
+    }
+
     try {
-      await storage.save(USER_KEYS.AVATAR, icon);
-      setSelectedAvatar(icon);
-      showAlert('✅ สำเร็จ', 'เปลี่ยนตัวแทนเรียบร้อย', 'success');
+      const result = await ImagePicker.launchImageLibraryAsync({
+        // @ts-ignore: Deprecated but types not updated yet
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.3, // Compressed for storage efficiency
+      });
+
+      if (!result.canceled) {
+        // Upload to Supabase
+        showAlert('⏳ กำลังอัปโหลด', 'กรุณารอสักครู่...', 'info', false);
+
+        const publicUrl = await UserService.uploadAvatar(user.id, result.assets[0].uri);
+
+        setAlertConfig(prev => ({ ...prev, visible: false })); // Close loading alert
+
+        if (publicUrl) {
+          setSelectedAvatar(publicUrl);
+          showAlert('✅ สำเร็จ', 'เปลี่ยนรูปโปรไฟล์เรียบร้อย', 'success');
+        } else {
+          throw new Error('Upload failed');
+        }
+      }
     } catch (error) {
-      showAlert('❌ ผิดพลาด', 'ไม่สามารถบันทึกได้', 'error');
+      console.error('Pick image error:', error);
+      showAlert('❌ ผิดพลาด', 'ไม่สามารถอัปโหลดรูปภาพได้', 'error');
     }
   };
 
   const saveName = async () => {
+    if (!user) return;
     try {
-      await storage.save(USER_KEYS.NAME, userName);
-      setIsEditing(false);
-      showAlert('✅ สำเร็จ', 'บันทึกชื่อเรียบร้อย', 'success');
+      const success = await UserService.updateProfile(user.id, { username: userName });
+      if (success) {
+        setIsEditing(false);
+        showAlert('✅ สำเร็จ', 'บันทึกชื่อเรียบร้อย', 'success');
+      } else {
+        throw new Error('Update failed');
+      }
     } catch (error) {
       showAlert('❌ ผิดพลาด', 'ไม่สามารถบันทึกได้', 'error');
     }
   };
 
   const saveEmergencyContact = async () => {
+    if (!user) return;
     try {
-      await storage.save(USER_KEYS.EMERGENCY_CONTACT, emergencyContact);
-      showAlert('✅ สำเร็จ', 'บันทึกเบอร์ฉุกเฉินเรียบร้อย', 'success');
+      const success = await UserService.updateProfile(user.id, { emergency_contact: emergencyContact });
+      if (success) {
+        showAlert('✅ สำเร็จ', 'บันทึกเบอร์ฉุกเฉินเรียบร้อย', 'success');
+      } else {
+        throw new Error('Update failed');
+      }
     } catch (error) {
       showAlert('❌ ผิดพลาด', 'ไม่สามารถบันทึกได้', 'error');
     }
@@ -218,266 +267,190 @@ export default function SettingsScreen() {
     });
   };
 
-  const selectedAvatarObj = AVATARS.find(a => a.icon === selectedAvatar);
+  const handleLogout = async () => {
+    setAlertConfig({
+      visible: true,
+      title: '👋 ออกจากระบบ',
+      message: 'คุณต้องการออกจากระบบหรือไม่?',
+      type: 'warning',
+      singleAction: false,
+      confirmText: 'ออกจากระบบ',
+      cancelText: 'ยกเลิก',
+      onConfirm: async () => {
+        setAlertConfig(prev => ({ ...prev, visible: false }));
+        await signOut();
+      },
+    });
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#1a1a1a' : '#fff' }} edges={['top']}>
-      <ScrollView flex={1} backgroundColor="$background" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
-        <YStack padding="$3" gap="$3">
-          {/* Header */}
-          <YStack>
-            <H1 fontSize={isSmallScreen ? "$6" : "$8"} fontWeight="800" color="$color">⚙️ ตั้งค่า</H1>
-            <Paragraph size="$2" color="$gray10">ปรับแต่งแอปตามที่คุณต้องการ</Paragraph>
-          </YStack>
+      <YStack flex={1} backgroundColor="$background" padding="$3" justifyContent="space-between">
 
-          {/* Profile Card */}
+        {/* Top Content */}
+        <YStack gap="$3">
+          {/* Header & Theme Toggle */}
+          <XStack justifyContent="space-between" alignItems="center">
+            <XStack alignItems="center" gap="$2">
+              <H2 fontSize={isSmallScreen ? "$5" : "$6"} fontWeight="800" color="$color">⚙️ ตั้งค่า</H2>
+            </XStack>
+            <XStack alignItems="center" gap="$2" backgroundColor="$gray2" paddingHorizontal="$2" paddingVertical="$1" borderRadius="$4">
+              {isDark ? <Moon size={16} color="$purple9" /> : <Sun size={16} color="$yellow9" />}
+              <Switch
+                value={isDark}
+                onValueChange={toggleTheme}
+                trackColor={{ false: '#767577', true: '#2196F3' }}
+                thumbColor="#ffffff"
+                style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+              />
+            </XStack>
+          </XStack>
+
+          {/* Profile Card (Compact) */}
           <Card
-            elevation="$1"
             borderWidth={1}
             borderColor="$borderColor"
             padding="$3"
             backgroundColor="$background"
-            borderLeftWidth={4}
-            borderLeftColor={selectedAvatarObj?.color as any || '$blue9'}
+            elevation="$1"
           >
             <XStack alignItems="center" gap="$3">
-              <YStack
-                width={isSmallScreen ? 60 : 70}
-                height={isSmallScreen ? 60 : 70}
-                borderRadius={35}
-                backgroundColor={selectedAvatarObj?.color as any || '$blue4'}
-                justifyContent="center"
-                alignItems="center"
-              >
-                <Text fontSize={isSmallScreen ? 28 : 36}>{selectedAvatar}</Text>
+              <YStack position="relative">
+                <Avatar circular size="$6">
+                  <Avatar.Image src={selectedAvatar} />
+                  <Avatar.Fallback backgroundColor="$blue4" alignItems="center" justifyContent="center">
+                    <Text fontSize="$3">👤</Text>
+                  </Avatar.Fallback>
+                </Avatar>
+                <Button position="absolute" bottom={-4} right={-4} size="$2" circular backgroundColor="$blue9" onPress={pickImage}>
+                  <Camera size={12} color="white" />
+                </Button>
               </YStack>
-              <YStack flex={1}>
-                <XStack alignItems="center" gap="$1">
-                  <User size={14} color="$gray9" />
-                  <Paragraph size="$1" color="$gray9">ชื่อของคุณ</Paragraph>
-                </XStack>
+
+              <YStack flex={1} gap="$1">
+                <Paragraph size="$1" color="$gray9">ชื่อแสดงผล</Paragraph>
                 {isEditing ? (
                   <XStack gap="$2" alignItems="center">
                     <TextInput
                       value={userName}
                       onChangeText={setUserName}
                       style={{
-                        flex: 1,
-                        fontSize: 16,
-                        fontWeight: 'bold',
-                        borderBottomWidth: 2,
-                        borderBottomColor: '#00ACC1',
-                        paddingVertical: 2,
-                        color: isDark ? '#fff' : '#000',
+                        flex: 1, fontSize: 16, borderBottomWidth: 1, borderBottomColor: '#2196F3',
+                        color: isDark ? '#fff' : '#000', paddingVertical: 2
                       }}
                       autoFocus
-                      placeholderTextColor={isDark ? '#888' : '#999'}
                     />
-                    <Button size="$2" backgroundColor="$blue9" onPress={saveName}>
-                      <Check size={14} color="white" />
-                    </Button>
+                    <Button size="$2" circular backgroundColor="$green9" onPress={saveName} icon={<Check size={12} color="white" />} />
                   </XStack>
                 ) : (
-                  <Button chromeless onPress={() => setIsEditing(true)} paddingHorizontal={0} height="auto">
-                    <H2 color="$color" fontSize={isSmallScreen ? "$5" : "$6"}>{userName}</H2>
-                  </Button>
+                  <XStack alignItems="center" gap="$2" onPress={() => setIsEditing(true)}>
+                    <H3 fontSize="$5" color="$color">{userName}</H3>
+                    <Text fontSize="$3" color="$blue9">✎</Text>
+                  </XStack>
                 )}
               </YStack>
             </XStack>
           </Card>
 
-          {/* Avatar Selection */}
-          <Card elevation="$1" borderWidth={1} borderColor="$borderColor" padding="$3" backgroundColor="$background">
-            <XStack alignItems="center" gap="$2" marginBottom="$2">
-              <Palette size={18} color="$blue9" />
-              <H3 color="$color" fontSize={isSmallScreen ? "$4" : "$5"}>เลือกตัวแทน</H3>
-            </XStack>
-
-            <XStack flexWrap="wrap" gap="$2" justifyContent="space-between">
-              {AVATARS.map((item) => {
-                const isSelected = selectedAvatar === item.icon;
-                return (
-                  <Button
-                    key={item.id}
-                    width={avatarButtonSize}
-                    height={avatarButtonSize}
-                    borderWidth={isSelected ? 3 : 1}
-                    borderColor={isSelected ? (item.color as any) : '$gray6'}
-                    borderRadius="$3"
-                    backgroundColor={isSelected ? (item.color as any) : '$gray2'}
-                    onPress={() => saveAvatar(item.icon)}
-                    pressStyle={{ scale: 0.95 }}
-                    padding="$1"
-                  >
-                    <YStack alignItems="center" gap="$0">
-                      <Text fontSize={avatarButtonSize * 0.4}>{item.icon}</Text>
-                      <Paragraph size="$1" color={isSelected ? 'white' : '$gray10'} numberOfLines={1}>
-                        {item.name}
-                      </Paragraph>
-                    </YStack>
-                  </Button>
-                );
-              })}
-            </XStack>
-          </Card>
-
-          {/* Emergency Contact */}
-          <Card elevation="$1" borderWidth={1} borderColor="$borderColor" padding="$3" backgroundColor="$background">
-            <XStack alignItems="center" gap="$2" marginBottom="$2">
-              <Phone size={18} color="$red9" />
-              <H3 color="$color" fontSize={isSmallScreen ? "$4" : "$5"}>เบอร์ติดต่อฉุกเฉิน</H3>
-            </XStack>
-
-            <Paragraph size="$1" color="$gray9" marginBottom="$2">
-              ใช้ในกรณีไม่เช็คอินติดต่อกัน
-            </Paragraph>
-
-            <XStack gap="$2" alignItems="center">
-              <TextInput
-                value={emergencyContact}
-                onChangeText={setEmergencyContact}
-                placeholder="081-234-5678"
-                keyboardType="phone-pad"
-                placeholderTextColor={isDark ? '#666' : '#999'}
-                style={{
-                  flex: 1,
-                  fontSize: 14,
-                  borderWidth: 1,
-                  borderColor: isDark ? '#444' : '#ddd',
-                  borderRadius: 8,
-                  paddingHorizontal: 10,
-                  paddingVertical: 8,
-                  backgroundColor: isDark ? '#2a2a2a' : '#f9f9f9',
-                  color: isDark ? '#fff' : '#000',
-                }}
-              />
-              <Button size="$3" backgroundColor="$red9" onPress={saveEmergencyContact}>
-                <Text color="white" fontWeight="600" fontSize="$2">บันทึก</Text>
-              </Button>
-            </XStack>
-          </Card>
-
-          {/* Theme Toggle */}
-          <Card elevation="$1" borderWidth={1} borderColor="$borderColor" padding="$3" backgroundColor="$background">
-            <XStack justifyContent="space-between" alignItems="center">
-              <XStack alignItems="center" gap="$2">
-                {isDark ? <Moon size={20} color="$purple9" /> : <Sun size={20} color="$yellow9" />}
-                <YStack>
-                  <H3 color="$color" fontSize={isSmallScreen ? "$4" : "$5"}>โหมดมืด</H3>
-                  <Paragraph size="$1" color="$gray9">
-                    {isDark ? 'เปิดอยู่' : 'ปิดอยู่'}
-                  </Paragraph>
-                </YStack>
-              </XStack>
-              <Switch
-                size="$3"
-                checked={isDark}
-                onCheckedChange={toggleTheme}
-                backgroundColor={isDark ? '$purple9' : '$gray5'}
-              >
-                <Switch.Thumb />
-              </Switch>
-            </XStack>
-          </Card>
-
-          {/* Notification Settings */}
-          <Card elevation="$1" borderWidth={1} borderColor="$borderColor" padding="$3" backgroundColor="$background">
-            <XStack alignItems="center" gap="$2" marginBottom="$2">
-              <Bell size={18} color="$blue9" />
-              <H3 color="$color" fontSize={isSmallScreen ? "$4" : "$5"}>แจ้งเตือนประจำวัน</H3>
-            </XStack>
-
-            <Paragraph size="$1" color="$gray9" marginBottom="$2">
-              รับการแจ้งเตือนเพื่อเช็คอินทุกวัน
-            </Paragraph>
-
-            <XStack justifyContent="space-between" alignItems="center" marginBottom="$2">
-              <Paragraph size="$2" color="$color">เปิดการแจ้งเตือน</Paragraph>
-              <Switch
-                size="$3"
-                checked={notificationEnabled}
-                onCheckedChange={handleNotificationToggle}
-                backgroundColor={notificationEnabled ? '$blue9' : '$gray5'}
-              >
-                <Switch.Thumb />
-              </Switch>
-            </XStack>
-
-            {notificationEnabled && (
+          {/* Settings Group */}
+          <YStack gap="$2">
+            {/* Emergency Contact (Compact) */}
+            <Card
+              borderWidth={1}
+              borderColor="$borderColor"
+              padding="$3"
+              backgroundColor="$background"
+            >
               <YStack gap="$2">
-                <XStack justifyContent="space-between" alignItems="center">
-                  <Paragraph size="$2" color="$color">เวลาแจ้งเตือน</Paragraph>
-                  <XStack gap="$2" alignItems="center">
-                    <Button
-                      size="$2"
-                      chromeless
-                      onPress={() => adjustTime('hour', -1)}
-                      disabled={notificationHour <= 0}
-                    >
-                      <Text color="$blue9" fontSize="$4">−</Text>
-                    </Button>
-                    <Text fontWeight="700" fontSize="$4" color="$color" minWidth={60} textAlign="center">
-                      {formatTime(notificationHour, notificationMinute)}
-                    </Text>
-                    <Button
-                      size="$2"
-                      chromeless
-                      onPress={() => adjustTime('hour', 1)}
-                      disabled={notificationHour >= 23}
-                    >
-                      <Text color="$blue9" fontSize="$4">+</Text>
-                    </Button>
-                  </XStack>
+                <XStack alignItems="center" gap="$2">
+                  <Phone size={16} color="$red9" />
+                  <Text fontWeight="600" color="$color">เบอร์ฉุกเฉิน</Text>
                 </XStack>
-
-                <Button
-                  size="$3"
-                  backgroundColor="$blue9"
-                  onPress={saveNotificationTime}
-                >
-                  <Text color="white" fontWeight="600">💾 บันทึกเวลาแจ้งเตือน</Text>
-                </Button>
-
-                {/* Demo Mode Toggle */}
-                <XStack alignItems="center" gap="$2" marginTop="$2" padding="$2" backgroundColor="$yellow2" borderRadius="$2">
-                  <Switch
-                    size="$2"
-                    checked={isDemoMode}
-                    onCheckedChange={handleDemoModeToggle}
-                    backgroundColor={isDemoMode ? '$orange9' : '$gray5'}
-                  >
-                    <Switch.Thumb />
-                  </Switch>
-                  <YStack>
-                    <Text fontSize="$2" fontWeight="700" color="$orange10">โหมดสาธิต (Demo)</Text>
-                    <Paragraph size="$1" color="$orange10">แจ้งเตือนทุก 5 นาที (สำหรับทดสอบ)</Paragraph>
-                  </YStack>
+                <XStack gap="$2">
+                  <TextInput
+                    value={emergencyContact}
+                    onChangeText={setEmergencyContact}
+                    placeholder="08X-XXX-XXXX"
+                    keyboardType="phone-pad"
+                    placeholderTextColor={isDark ? '#666' : '#999'}
+                    style={{
+                      flex: 1, fontSize: 14, borderWidth: 1, borderColor: isDark ? '#444' : '#ddd',
+                      borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6,
+                      backgroundColor: isDark ? '#2a2a2a' : '#f9f9f9', color: isDark ? '#fff' : '#000'
+                    }}
+                  />
+                  <Button size="$3" backgroundColor="$red9" onPress={saveEmergencyContact}>
+                    <Text color="white" fontSize="$2">บันทึก</Text>
+                  </Button>
                 </XStack>
               </YStack>
-            )}</Card>
+            </Card>
 
-          {/* Reset Button */}
-          <Button
-            size="$4"
-            backgroundColor="$red4"
-            borderColor="$red9"
-            borderWidth={1}
-            onPress={resetSettings}
-            pressStyle={{ backgroundColor: '$red5' }}
-          >
-            <Text fontWeight="700" fontSize="$3" color="$red9">🔄 รีเซ็ตการตั้งค่าทั้งหมด</Text>
-          </Button>
+            {/* Notification (Compact) */}
+            <Card
+              borderWidth={1}
+              borderColor="$borderColor"
+              padding="$3"
+              backgroundColor="$background"
+            >
+              <XStack justifyContent="space-between" alignItems="center">
+                <XStack alignItems="center" gap="$2">
+                  <Bell size={16} color="$blue9" />
+                  <YStack>
+                    <Text fontWeight="600" color="$color">แจ้งเตือนประจำวัน</Text>
+                    {notificationEnabled && (
+                      <Text fontSize="$2" color="$gray9">
+                        เวลา {notificationHour.toString().padStart(2, '0')}:{notificationMinute.toString().padStart(2, '0')} น.
+                      </Text>
+                    )}
+                  </YStack>
+                </XStack>
+                <Switch
+                  value={notificationEnabled}
+                  onValueChange={handleNotificationToggle}
+                  trackColor={{ false: '#767577', true: '#2196F3' }}
+                  thumbColor="#ffffff"
+                  style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+                />
+              </XStack>
 
-          {/* App Info */}
-          <YStack alignItems="center" paddingVertical="$3" gap="$1">
-            <Text fontSize={30}>💚</Text>
-            <H3 color="$gray10" fontSize="$4">U-Dee v1.0.0</H3>
-            <Paragraph size="$1" color="$gray9" textAlign="center">
-              แอปเช็คอินเพื่อคนที่คุณรัก
-            </Paragraph>
+              {notificationEnabled && (
+                <XStack justifyContent="flex-end" marginTop="$2" gap="$2" alignItems="center">
+                  <Button size="$2" chromeless onPress={() => openTimeSelector('hour')} borderWidth={1} borderColor="$borderColor">
+                    <Text fontWeight="700">{notificationHour.toString().padStart(2, '0')}</Text>
+                  </Button>
+                  <Text>:</Text>
+                  <Button size="$2" chromeless onPress={() => openTimeSelector('minute')} borderWidth={1} borderColor="$borderColor">
+                    <Text fontWeight="700">{notificationMinute.toString().padStart(2, '0')}</Text>
+                  </Button>
+                  <Button size="$2" backgroundColor="$blue9" onPress={saveNotificationTime}>
+                    <Text color="white">บันทึก</Text>
+                  </Button>
+                </XStack>
+              )}
+            </Card>
           </YStack>
         </YStack>
-      </ScrollView>
+
+        {/* Footer Actions */}
+        <YStack gap="$2" marginBottom="$2">
+          <XStack gap="$3">
+            <Button flex={1} size="$3" backgroundColor="$gray3" onPress={resetSettings}>
+              <Text color="$gray11">รีเซ็ตข้อมูล</Text>
+            </Button>
+            <Button flex={1} size="$3" backgroundColor="$red2" borderColor="$red5" borderWidth={1} onPress={handleLogout}>
+              <XStack gap="$2" alignItems="center" justifyContent="center">
+                <LogOut size={16} color="$red9" />
+                <Text color="$red9" fontWeight="600">ออกจากระบบ</Text>
+              </XStack>
+            </Button>
+          </XStack>
+          <XStack justifyContent="center" alignItems="center" gap="$1" opacity={0.6}>
+            <Text fontSize="$1">U-Dee v1.0.0 💚</Text>
+          </XStack>
+        </YStack>
+
+      </YStack>
 
       <AlertModal
         visible={alertConfig.visible}
@@ -489,6 +462,15 @@ export default function SettingsScreen() {
         confirmText={alertConfig.confirmText}
         cancelText={alertConfig.cancelText}
         singleAction={alertConfig.singleAction}
+      />
+
+      <TimeSelectorModal
+        visible={timeSelector.visible}
+        title={timeSelector.title}
+        data={timeSelector.data}
+        selectedValue={timeSelector.type === 'hour' ? notificationHour : notificationMinute}
+        onSelect={handleTimeSelect}
+        onClose={() => setTimeSelector(prev => ({ ...prev, visible: false }))}
       />
     </SafeAreaView>
   );

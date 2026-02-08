@@ -1,10 +1,12 @@
-import { Clock, Home, Settings, Users } from '@tamagui/lucide-icons';
+import { Clock, Home, Map as MapIcon, Settings, Users } from '@tamagui/lucide-icons';
 import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeContext } from '../../context/ThemeContext';
 
 export default function TabLayout() {
   const { isDark } = useThemeContext();
+  const insets = useSafeAreaInsets();
 
   const tabBarBg = isDark ? '#1a1a1a' : '#ffffff';
   const headerBg = isDark ? '#1a1a1a' : '#ffffff';
@@ -21,13 +23,14 @@ export default function TabLayout() {
           backgroundColor: tabBarBg,
           borderTopColor: borderColor,
           borderTopWidth: 1,
-          height: Platform.OS === 'android' ? 75 : 60,
-          paddingBottom: Platform.OS === 'android' ? 15 : 8,
-          paddingTop: 8,
+          height: Platform.OS === 'android' ? 70 + insets.bottom : 60,
+          paddingBottom: Platform.OS === 'android' ? insets.bottom + 20 : 20,
+          paddingTop: 10,
         },
         tabBarLabelStyle: {
           fontSize: 12,
           fontWeight: '600',
+          paddingBottom: 0,
         },
         headerStyle: {
           backgroundColor: headerBg,
@@ -38,7 +41,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'อยู่ดี',
+          title: 'หน้าหลัก',
           headerShown: false,
           tabBarIcon: ({ color, focused }) => (
             <Home
@@ -56,6 +59,20 @@ export default function TabLayout() {
           headerShown: false,
           tabBarIcon: ({ color, focused }) => (
             <Users
+              size={focused ? 28 : 24}
+              color={color as any}
+              strokeWidth={focused ? 2.5 : 2}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="map" // Added map screen to tabs based on icon usage in previous files, ensuring consistent navigation
+        options={{
+          title: 'แผนที่',
+          headerShown: false,
+          tabBarIcon: ({ color, focused }) => (
+            <MapIcon
               size={focused ? 28 : 24}
               color={color as any}
               strokeWidth={focused ? 2.5 : 2}

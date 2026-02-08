@@ -1,4 +1,4 @@
-import { Calendar, Grid, List, MapPin, Trash2 } from '@tamagui/lucide-icons';
+import { Calendar, Grid, List, Trash2 } from '@tamagui/lucide-icons';
 import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { FlatList, useWindowDimensions } from 'react-native';
@@ -11,6 +11,7 @@ import WeeklySummary from '../../components/WeeklySummary';
 import { useThemeContext } from '../../context/ThemeContext';
 import { DATA_KEYS, storage } from '../../utils/storage';
 
+import { HistoryItemCard } from '../../components/HistoryItemCard';
 import { calculateStreak } from '../../utils/checkInLogic';
 
 // Helper to extract date keys from history
@@ -122,51 +123,12 @@ export default function HistoryScreen() {
   };
 
   const renderItem = ({ item, index }: { item: HistoryItem; index: number }) => (
-    <Card
-      elevation="$1"
-      borderWidth={1}
-      borderColor="$borderColor"
-      padding={isSmallScreen ? "$2" : "$3"}
-      marginBottom="$2"
-      backgroundColor="$background"
-      borderLeftWidth={4}
-      borderLeftColor={index === 0 ? "$green9" : "$blue6"}
-    >
-      <XStack justifyContent="space-between" alignItems="flex-start">
-        <XStack gap="$2" flex={1}>
-          <YStack
-            width={isSmallScreen ? 36 : 44}
-            height={isSmallScreen ? 36 : 44}
-            borderRadius={22}
-            backgroundColor={index === 0 ? "$green4" : "$blue4"}
-            alignItems="center"
-            justifyContent="center"
-          >
-            <Text fontSize={isSmallScreen ? "$3" : "$5"}>{index === 0 ? "💚" : "🌿"}</Text>
-          </YStack>
-
-          <YStack flex={1} gap="$0">
-            <XStack alignItems="center" gap="$1">
-              <Calendar size={10} color="$gray9" />
-              <Paragraph size="$1" color="$gray9" numberOfLines={1}>{item.date}</Paragraph>
-            </XStack>
-
-            <Text fontSize={isSmallScreen ? "$2" : "$3"} fontWeight="600" color="$color">{item.status}</Text>
-
-            <XStack alignItems="center" gap="$1">
-              <MapPin size={10} color="$gray8" />
-              <Paragraph size="$1" color="$gray8" numberOfLines={1}>
-                {item.coords.latitude.toFixed(4)}, {item.coords.longitude.toFixed(4)}
-              </Paragraph>
-            </XStack>
-          </YStack>
-        </XStack>
-
-        <Button size="$2" circular chromeless onPress={() => deleteItem(item.id)}>
-          <Trash2 size={14} color="$red9" />
-        </Button>
-      </XStack>
-    </Card>
+    <HistoryItemCard
+      item={item}
+      index={index}
+      onDelete={deleteItem}
+      showDelete={true}
+    />
   );
 
   const EmptyState = () => (
@@ -235,7 +197,7 @@ export default function HistoryScreen() {
                 <Text fontSize={isSmallScreen ? "$5" : "$7"}>🔥</Text>
                 <H1 fontSize={isSmallScreen ? "$6" : "$8"} fontWeight="800" color="$orange10">{streak}</H1>
               </XStack>
-              <Paragraph size="$1" color="$orange9">Streak</Paragraph>
+              <Paragraph size="$1" color="$orange9">วันติดต่อกัน</Paragraph>
             </YStack>
 
             <Separator vertical height={35} />
@@ -266,18 +228,7 @@ export default function HistoryScreen() {
               <Badges streak={streak} totalCheckIns={history.length} />
 
               {/* Recent check-ins */}
-              {history.length > 0 && (
-                <YStack gap="$2">
-                  <H3 color="$color" fontSize="$3">เช็คอินล่าสุด</H3>
-                  {history.slice(0, 3).map((item, index) => (
-                    <XStack key={item.id} alignItems="center" gap="$2" padding="$2" backgroundColor="$gray2" borderRadius="$2">
-                      <Text fontSize="$3">{index === 0 ? "💚" : "🌿"}</Text>
-                      <Paragraph size="$2" color="$color" flex={1}>{item.date}</Paragraph>
-                      <Paragraph size="$1" color="$gray9">{item.status}</Paragraph>
-                    </XStack>
-                  ))}
-                </YStack>
-              )}
+
             </YStack>
           </ScrollView>
         )}
