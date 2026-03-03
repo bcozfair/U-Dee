@@ -2,6 +2,7 @@ export interface CheckInRecord {
     id: string;
     date: string;
     status: string;
+    createdAt?: string; // ISO string from Supabase
     coords: {
         latitude: number;
         longitude: number;
@@ -9,13 +10,18 @@ export interface CheckInRecord {
 }
 
 export const getRecordDate = (record: CheckInRecord): Date => {
-    // Try parsing ID as timestamp first (more reliable)
+    // 1. Try ISO string from createdAt (most reliable for Supabase data)
+    if (record.createdAt) {
+        return new Date(record.createdAt);
+    }
+
+    // 2. Try parsing ID as timestamp (legacy local data)
     const timestamp = parseInt(record.id, 10);
     if (!isNaN(timestamp) && timestamp > 1000000000000) {
         return new Date(timestamp);
     }
 
-    // Fallback to date string (flaky for "th-TH" strings, but kept for legacy)
+    // 3. Fallback to date string (flaky for "th-TH" strings, avoid if possible)
     return new Date(record.date);
 };
 

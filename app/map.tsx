@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Navigation } from '@tamagui/lucide-icons';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -6,13 +5,17 @@ import { ActivityIndicator, Linking, Platform, useWindowDimensions } from 'react
 import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Card, H3, Paragraph, ScrollView, Text, XStack, YStack } from 'tamagui';
+import { useAuth } from '../context/AuthContext';
 import { useThemeContext } from '../context/ThemeContext';
 import { FamilyMember, FamilyService } from '../services/FamilyService';
+import { UserService } from '../services/UserService';
+import { toThaiDateTime } from '../utils/dateTime';
 
 export default function MapScreen() {
   const params = useLocalSearchParams();
   const focusedMemberIdProp = params.memberId as string;
   const insets = useSafeAreaInsets();
+  const { session } = useAuth();
 
   const [dbLocation, setDbLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [avatar, setAvatar] = useState("😊");
@@ -30,7 +33,7 @@ export default function MapScreen() {
   useFocusEffect(
     useCallback(() => {
       loadData();
-    }, [])
+    }, [session])
   );
 
   useEffect(() => {
@@ -53,7 +56,7 @@ export default function MapScreen() {
                 longitude: newData.longitude
               },
               status: newData.status_text,
-              lastCheckIn: new Date(newData.last_updated).toLocaleString('th-TH'),
+              lastCheckIn: toThaiDateTime(newData.last_updated),
               batteryLevel: newData.battery_level,
               isOnline: newData.is_online
             };
@@ -71,20 +74,15 @@ export default function MapScreen() {
   const loadData = async () => {
     setLoading(true);
     try {
-      // 1. Load User's last location
-      const savedLocation = await AsyncStorage.getItem('last_location');
-      const savedAvatar = await AsyncStorage.getItem('user_avatar');
-      const historyData = await AsyncStorage.getItem('history_log');
+      // 1. Load User's profile and history from Supabase
+      if (session?.user?.id) {
+        const profile = await UserService.getProfile(session.user.id);
+        if (profile) {
+          setAvatar(profile.avatar_url);
+        }
 
-      if (savedLocation) {
-        setDbLocation(JSON.parse(savedLocation));
-      }
-      if (savedAvatar) {
-        setAvatar(savedAvatar);
-      }
-      if (historyData) {
-        const history = JSON.parse(historyData);
-        if (history.length > 0) {
+        const history = await FamilyService.getLocationHistory(session.user.id, 1);
+        if (history && history.length > 0) {
           setLastCheckIn(history[0].date);
         }
       }
@@ -101,13 +99,12 @@ export default function MapScreen() {
             focusLocation(target.location!.latitude, target.location!.longitude);
           }, 500); // Delay for map load
         }
-      } else if (savedLocation && mapRef.current) {
+      } else if (dbLocation && mapRef.current) {
         // Default to user location
-        const userLoc = JSON.parse(savedLocation);
         setTimeout(() => {
           mapRef.current?.animateToRegion({
-            latitude: userLoc.latitude,
-            longitude: userLoc.longitude,
+            latitude: dbLocation.latitude,
+            longitude: dbLocation.longitude,
             latitudeDelta: 0.05,
             longitudeDelta: 0.05,
           }, 1000);

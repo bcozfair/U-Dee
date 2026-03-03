@@ -8,21 +8,23 @@ import { AlertModal } from '../../components/AlertModal';
 import Badges from '../../components/Badges';
 import CalendarHeatmap from '../../components/CalendarHeatmap';
 import WeeklySummary from '../../components/WeeklySummary';
+import { useAuth } from '../../context/AuthContext';
 import { useThemeContext } from '../../context/ThemeContext';
-import { DATA_KEYS, storage } from '../../utils/storage';
+import { FamilyService } from '../../services/FamilyService';
 
 import { HistoryItemCard } from '../../components/HistoryItemCard';
 import { calculateStreak } from '../../utils/checkInLogic';
 
 // Helper to extract date keys from history
-// Note: item.id is a timestamp (Date.now()), so we use it to get the actual date
 const extractDateKeys = (history: any[]): string[] => {
   return history.map(item => {
     try {
-      // item.id is Date.now() timestamp
-      const timestamp = parseInt(item.id, 10);
-      if (!isNaN(timestamp)) {
-        const date = new Date(timestamp);
+      if (item.createdAt) {
+        return new Date(item.createdAt).toISOString().split('T')[0];
+      }
+      // Fallback for old items (unlikely)
+      const date = new Date(item.date);
+      if (!isNaN(date.getTime())) {
         return date.toISOString().split('T')[0];
       }
       return '';
@@ -36,6 +38,9 @@ interface HistoryItem {
   id: string;
   date: string;
   status: string;
+  createdAt?: string;
+  latitude?: number;
+  longitude?: number;
   coords: {
     latitude: number;
     longitude: number;
@@ -43,6 +48,7 @@ interface HistoryItem {
 }
 
 export default function HistoryScreen() {
+  const { session } = useAuth();
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [streak, setStreak] = useState(0);
   const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
@@ -73,15 +79,30 @@ export default function HistoryScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      loadHistory();
-    }, [])
+      if (session?.user?.id) {
+        loadHistory(session.user.id);
+      } else {
+        setHistory([]);
+      }
+    }, [session])
   );
 
-  const loadHistory = async () => {
-    const data = await storage.get<any[]>(DATA_KEYS.HISTORY_LOG);
+  const loadHistory = async (userId: string) => {
+    const data = await FamilyService.getLocationHistory(userId, 100);
     if (data) {
-      setHistory(data);
-      setStreak(calculateStreak(data));
+      // Map Supabase data to HistoryItem format
+      const mapped = data.map((item: any) => ({
+        id: item.id || Date.now().toString(),
+        date: item.date,
+        createdAt: item.createdAt, // Pass through ISO string
+        status: item.status || 'Active',
+        coords: {
+          latitude: item.latitude,
+          longitude: item.longitude
+        }
+      }));
+      setHistory(mapped);
+      setStreak(calculateStreak(mapped));
     }
   };
 
@@ -95,11 +116,14 @@ export default function HistoryScreen() {
       cancelText: 'ยกเลิก',
       confirmIcon: <Trash2 size={20} color="white" />,
       onConfirm: async () => {
+        // Optimistic update
         const newHistory = history.filter(item => item.id !== id);
-        await storage.save(DATA_KEYS.HISTORY_LOG, newHistory);
         setHistory(newHistory);
         setStreak(calculateStreak(newHistory));
         setAlertConfig(prev => ({ ...prev, visible: false }));
+
+        // Delete from Supabase
+        await FamilyService.deleteLocation(id);
       }
     });
   };
@@ -114,10 +138,15 @@ export default function HistoryScreen() {
       cancelText: 'ยกเลิก',
       confirmIcon: <Trash2 size={20} color="white" />,
       onConfirm: async () => {
-        await storage.remove(DATA_KEYS.HISTORY_LOG);
+        // Optimistic update
         setHistory([]);
         setStreak(0);
         setAlertConfig(prev => ({ ...prev, visible: false }));
+
+        // Delete all from Supabase
+        if (session?.user?.id) {
+          await FamilyService.clearLocationHistory(session.user.id);
+        }
       }
     });
   };

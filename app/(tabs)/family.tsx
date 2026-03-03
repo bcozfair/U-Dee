@@ -3,7 +3,7 @@ import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { Linking, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Avatar, Button, Card, H1, H3, Paragraph, ScrollView, Spinner, XStack, YStack } from 'tamagui';
+import { Avatar, Button, Card, H1, H3, Paragraph, ScrollView, Spinner, Text, XStack, YStack } from 'tamagui';
 import { AlertModal } from '../../components/AlertModal';
 import { useAuth } from '../../context/AuthContext';
 import { useThemeContext } from '../../context/ThemeContext';
@@ -108,6 +108,22 @@ export default function FamilyScreen() {
     const openNudgeModal = (member: FamilyMember) => {
         // Implement real Nudge logic via Edge Function or Realtime later
         showToast(`สะกิด ${member.name} แล้ว!`, 'success');
+
+        // Show immediate alert because user hasn't checked in > 24h
+        setAlertConfig({
+            visible: true,
+            title: '⚠️ หายเงียบไปนานแล้วนะ!!',
+            message: `"${member.name}" ไม่ได้เช็คอินมานานเกิน 24 ชม.\nหากสะกิดแล้วไม่ตอบกลับ ควรรีบโทรติดต่อทันที`,
+            type: 'warning',
+            confirmText: 'โทรทันที',
+            cancelText: 'รับทราบ',
+            onConfirm: () => {
+                handleCall(member.phoneNumber);
+                closeAlert();
+            },
+            onCancel: closeAlert,
+            singleAction: false,
+        });
     };
 
     if (loading) {
@@ -204,6 +220,20 @@ export default function FamilyScreen() {
 
                                     {/* Action Icons */}
                                     <XStack gap="$2" alignItems="center">
+                                        {/* Nudge Button (Only if inactive > 24h or never checked in) */}
+                                        {(!member.lastUpdatedRaw || (new Date().getTime() - new Date(member.lastUpdatedRaw).getTime()) > 24 * 60 * 60 * 1000) && (
+                                            <Button
+                                                size="$3"
+                                                circular
+                                                chromeless
+                                                backgroundColor="$orange2"
+                                                onPress={() => openNudgeModal(member)}
+                                            >
+                                                {/* Use Bell icon if available, or just text/emoji */}
+                                                <Text fontSize={18}>👋</Text>
+                                            </Button>
+                                        )}
+
                                         {/* Map Button */}
                                         <Button
                                             size="$3"

@@ -6,10 +6,12 @@ import { ActivityIndicator, Modal, Image as RNImage, useWindowDimensions } from 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card, H1, H2, H3, Paragraph, ScrollView, Text, XStack, YStack } from 'tamagui';
 import { HistoryItemCard } from '../../components/HistoryItemCard';
+import { useAuth } from '../../context/AuthContext';
 import { useThemeContext } from '../../context/ThemeContext';
 import { useToast } from '../../context/ToastContext';
-import { calculateStreak, getRecordDate } from '../../utils/checkInLogic';
-import { DATA_KEYS, storage, USER_KEYS } from '../../utils/storage';
+import { FamilyService } from '../../services/FamilyService';
+import { UserService } from '../../services/UserService';
+import { calculateStreak } from '../../utils/checkInLogic';
 
 // Status Options
 const STATUS_OPTIONS = [
@@ -37,6 +39,7 @@ const DEFAULT_QUOTE = "ความสุขอยู่ที่ใจเรา
 
 export default function HomeScreen() {
   const { showToast } = useToast();
+  const { session } = useAuth();
   const [quote, setQuote] = useState("กำลังโหลดกำลังใจ...");
   const [loading, setLoading] = useState(false);
   const [avatar, setAvatar] = useState("😊");
@@ -59,9 +62,11 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      loadUserData();
-      loadStreak();
-    }, [])
+      if (session?.user?.id) {
+        loadUserData(session.user.id);
+        loadStreak(session.user.id);
+      }
+    }, [session])
   );
 
   useEffect(() => {
@@ -80,41 +85,31 @@ export default function HomeScreen() {
     fetchQuote();
   }, []);
 
-  const loadUserData = async () => {
-    const savedAvatar = await storage.get<string>(USER_KEYS.AVATAR);
-    const savedName = await storage.get<string>(USER_KEYS.NAME);
-    if (savedAvatar) setAvatar(savedAvatar);
-    if (savedName) setUserName(savedName);
+  const loadUserData = async (userId: string) => {
+    const profile = await UserService.getProfile(userId);
+    if (profile) {
+      setAvatar(profile.avatar_url);
+      setUserName(profile.username);
+    }
   };
 
-  const loadStreak = async () => {
-    const history = await storage.get<any[]>(DATA_KEYS.HISTORY_LOG);
-    if (history) {
-      setRecentHistory(history.slice(0, 3)); // Get top 3
+  const loadStreak = async (userId: string) => {
+    const history = await FamilyService.getLocationHistory(userId, 50);
+    if (history && history.length > 0) {
+      setRecentHistory(history.slice(0, 3));
       const currentStreak = calculateStreak(history);
       setStreak(currentStreak);
 
-      if (history.length > 0) {
-        let lastCheckInTime;
-        try {
-          const latestItem = history[0];
-          lastCheckInTime = getRecordDate(latestItem);
-        } catch (e) {
-          lastCheckInTime = new Date();
-        }
+      const lastCheckInDate = new Date(history[0].date);
+      const today = new Date();
+      setCheckedInToday(
+        lastCheckInDate.getDate() === today.getDate() &&
+        lastCheckInDate.getMonth() === today.getMonth() &&
+        lastCheckInDate.getFullYear() === today.getFullYear()
+      );
 
-        const today = new Date();
-        setCheckedInToday(
-          lastCheckInTime.getDate() === today.getDate() &&
-          lastCheckInTime.getMonth() === today.getMonth() &&
-          lastCheckInTime.getFullYear() === today.getFullYear()
-        );
-
-        const diffHours = (today.getTime() - lastCheckInTime.getTime()) / (1000 * 60 * 60);
-        setShowDangerAlert(diffHours > 24);
-      } else {
-        setShowDangerAlert(true);
-      }
+      const diffHours = (today.getTime() - lastCheckInDate.getTime()) / (1000 * 60 * 60);
+      setShowDangerAlert(diffHours > 24);
     } else {
       setShowDangerAlert(true);
     }
@@ -139,24 +134,23 @@ export default function HomeScreen() {
     try {
       let location = await Location.getCurrentPositionAsync({});
 
-      const newRecord = {
-        id: Date.now().toString(),
-        date: new Date().toLocaleString('th-TH'),
-        status: selectedStatus,
-        coords: location.coords
-      };
+      // Save to Supabase via UserService (updates user_status AND location_history)
+      if (session?.user?.id) {
+        await UserService.updateStatus(session.user.id, {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+          status_text: selectedStatus,
+          is_online: true,
+          battery_level: 100,
+          last_updated: new Date().toISOString()
+        });
 
-      const history = await storage.get<any[]>(DATA_KEYS.HISTORY_LOG) || [];
-      history.unshift(newRecord);
-      await storage.save(DATA_KEYS.HISTORY_LOG, history);
-      setRecentHistory(history.slice(0, 3)); // Update recent list
-      await storage.save(DATA_KEYS.LAST_LOCATION, location.coords);
+        // Reload streak and history from Supabase
+        await loadStreak(session.user.id);
+      }
 
-      const newStreak = calculateStreak(history);
-      setStreak(newStreak);
       setCheckedInToday(true);
       setShowDangerAlert(false);
-
       showToast(`เช็คอิน: "${selectedStatus}" เรียบร้อย!`, 'success');
     } catch (e) {
       console.log(e);

@@ -16,7 +16,7 @@ import {
   toggleNotifications
 } from '../../services/NotificationService';
 import { UserService } from '../../services/UserService';
-import { DATA_KEYS, storage, USER_KEYS } from '../../utils/storage';
+import { NOTIFICATION_KEYS, storage, USER_KEYS } from '../../utils/storage';
 
 export default function SettingsScreen() {
   const [selectedAvatar, setSelectedAvatar] = useState<string>('👦');
@@ -242,16 +242,11 @@ export default function SettingsScreen() {
       cancelText: 'ยกเลิก',
       onConfirm: async () => {
         await storage.multiRemove([
-          USER_KEYS.AVATAR,
-          USER_KEYS.NAME,
-          USER_KEYS.EMERGENCY_CONTACT,
           USER_KEYS.DARK_MODE,
-          DATA_KEYS.HISTORY_LOG,
-          DATA_KEYS.LAST_LOCATION
+          NOTIFICATION_KEYS.ENABLED,
+          NOTIFICATION_KEYS.TIME,
+          NOTIFICATION_KEYS.ID
         ]);
-        setSelectedAvatar('👦');
-        setUserName('ผู้ใช้งาน');
-        setEmergencyContact('');
         if (isDark) toggleTheme(); // Reset to light mode
         setAlertConfig({
           visible: true,
@@ -270,7 +265,7 @@ export default function SettingsScreen() {
   const handleLogout = async () => {
     setAlertConfig({
       visible: true,
-      title: '👋 ออกจากระบบ',
+      title: '🚫 ออกจากระบบ',
       message: 'คุณต้องการออกจากระบบหรือไม่?',
       type: 'warning',
       singleAction: false,

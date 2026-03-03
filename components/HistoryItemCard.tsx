@@ -35,8 +35,10 @@ interface HistoryItemProps {
 export const HistoryItemCard = ({ item, index, onDelete, showDelete = false }: HistoryItemProps) => {
     const [address, setAddress] = useState<string | null>(null);
 
-    // Format time: hh:mm
-    const timeString = new Date(parseInt(item.id)).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false });
+    // Extract time from Thai formatted date string "DD/MM/YYYY HH:mm น."
+    // Split by space: ["19/02/2569", "21:22", "น."]
+    const timeParts = item.date.split(' ');
+    const timeString = timeParts.length >= 2 ? timeParts[1] : '';
 
     // Get Emoji
     const getEmoji = () => {

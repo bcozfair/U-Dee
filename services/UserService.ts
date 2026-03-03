@@ -1,5 +1,4 @@
 import { supabase } from '../lib/supabase';
-import { storage, USER_KEYS } from '../utils/storage';
 
 export interface UserProfile {
     id: string;
@@ -20,7 +19,6 @@ export interface UserStatus {
 export const UserService = {
     /**
      * Get user profile from Supabase
-     * Falls back to local storage if offline/error
      */
     getProfile: async (userId: string): Promise<UserProfile | null> => {
         try {
@@ -33,14 +31,6 @@ export const UserService = {
             if (error) throw error;
 
             if (data) {
-                // Update local cache
-                // Map full_name (DB) -> username (App)
-                if (data.full_name) await storage.save(USER_KEYS.NAME, data.full_name);
-                if (data.avatar_url) await storage.save(USER_KEYS.AVATAR, data.avatar_url);
-                if (data.emergency_contact) {
-                    await storage.save(USER_KEYS.EMERGENCY_CONTACT, data.emergency_contact);
-                }
-
                 return {
                     id: data.id,
                     username: data.full_name || 'ผู้ใช้งาน', // DB uses full_name
@@ -50,29 +40,15 @@ export const UserService = {
             }
         } catch (error) {
             console.error('Error fetching profile:', error);
-            // Fallback to local storage
-            const name = await storage.get<string>(USER_KEYS.NAME);
-            const avatar = await storage.get<string>(USER_KEYS.AVATAR);
-            const contact = await storage.get<string>(USER_KEYS.EMERGENCY_CONTACT);
-
-            if (name && avatar) {
-                return {
-                    id: userId,
-                    username: name,
-                    avatar_url: avatar,
-                    emergency_contact: contact || undefined
-                };
-            }
         }
         return null;
     },
 
     /**
-     * Update user profile in Supabase and local storage
+     * Update user profile in Supabase
      */
     updateProfile: async (userId: string, updates: Partial<UserProfile>): Promise<boolean> => {
         try {
-            // 1. Update Supabase
             const { error } = await supabase
                 .from('profiles')
                 .update({
@@ -84,34 +60,22 @@ export const UserService = {
                 .eq('id', userId);
 
             if (error) throw error;
-
-            // 2. Update Local Storage
-            if (updates.username) await storage.save(USER_KEYS.NAME, updates.username);
-            if (updates.avatar_url) await storage.save(USER_KEYS.AVATAR, updates.avatar_url);
-            if (updates.emergency_contact) await storage.save(USER_KEYS.EMERGENCY_CONTACT, updates.emergency_contact);
-
             return true;
         } catch (error) {
             console.error('Error updating profile:', error);
-            // Even if cloud fails, might want to save locally? 
-            // For now, let's return false to indicate sync failure.
             return false;
         }
     },
 
     /**
      * Update user status (Location, Battery, etc)
-     */
-    /**
-     * Update user status (Location, Battery, etc)
-     * Uses UPDATE first to preserve existing fields not in payload,
-     * falls back to INSERT if record doesn't exist.
+     * AND record to location_history
      */
     updateStatus: async (userId: string, status: Partial<UserStatus>): Promise<void> => {
         try {
             const timestamp = new Date().toISOString();
 
-            // 1. Try to UPDATE first (Patch existing record)
+            // 1. Update current status
             const { data, error } = await supabase
                 .from('user_status')
                 .update({
@@ -119,28 +83,36 @@ export const UserService = {
                     last_updated: timestamp
                 })
                 .eq('user_id', userId)
-                .select(); // documented: select() returns the updated rows
+                .select();
 
             if (error) {
                 console.error('Error updating status (update):', error);
-                // If error is not "row not found" (which shows as empty data, not error usually), we might want to retry as insert?
-                // But typically Supabase update returns empty data if ID not found.
             }
 
-            // 2. If no record existed (data is empty array), INSERT new record
             if (!data || data.length === 0) {
-                const { error: insertError } = await supabase
+                await supabase
                     .from('user_status')
                     .insert({
                         user_id: userId,
                         ...status,
                         last_updated: timestamp
                     });
+            }
 
-                if (insertError) {
-                    // If insert fails (maybe race condition?), try upsert as last resort
-                    console.error('Error updating status (insert):', insertError);
-                }
+            // 2. Record to history if it's a location update
+            if (status.latitude && status.longitude) {
+                // Use the updated status from DB, or the one passed in, or default
+                const currentStatusText = data?.[0]?.status_text || status.status_text || 'Active';
+
+                await supabase
+                    .from('location_history')
+                    .insert({
+                        user_id: userId,
+                        latitude: status.latitude,
+                        longitude: status.longitude,
+                        status_text: currentStatusText,
+                        battery_level: status.battery_level
+                    });
             }
         } catch (error) {
             console.error('Error updating status (exception):', error);

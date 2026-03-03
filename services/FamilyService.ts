@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { toThaiDateTime } from '../utils/dateTime';
 import { UserProfile } from './UserService';
 
 export interface Family {
@@ -15,6 +16,7 @@ export interface FamilyMember extends UserProfile {
     joined_at: string;
     status?: string;
     lastCheckIn?: string;
+    lastUpdatedRaw?: string;
     location?: {
         latitude: number;
         longitude: number;
@@ -137,7 +139,8 @@ export const FamilyService = {
 
                     // Status fields
                     status: status?.status_text || 'ปกติ',
-                    lastCheckIn: status ? new Date(status.last_updated).toLocaleString('th-TH') : '-',
+                    lastCheckIn: status ? toThaiDateTime(status.last_updated) : '-',
+                    lastUpdatedRaw: status?.last_updated,
                     location: (status?.latitude && status?.longitude) ? {
                         latitude: status.latitude,
                         longitude: status.longitude
@@ -213,5 +216,97 @@ export const FamilyService = {
             .subscribe();
 
         return channel;
-    }
+    },
+
+    /**
+     * Get location history for a user
+     */
+    getLocationHistory: async (userId: string, limit: number = 20): Promise<any[]> => {
+        if (!userId) return [];
+        try {
+            console.log(`[FamilyService] Fetching history for userId: "${userId}"`);
+            const { data, error } = await supabase
+                .from('location_history')
+                .select('*')
+                .eq('user_id', userId)
+                .order('created_at', { ascending: false })
+                .limit(limit);
+
+            if (data) {
+                console.log(`[FamilyService] Found ${data.length} records for user`);
+            }
+
+            if (error) throw error;
+
+            return (data || []).map(h => ({
+                id: h.id,
+                latitude: h.latitude,
+                longitude: h.longitude,
+                status: h.status_text,
+                date: toThaiDateTime(h.created_at),
+                createdAt: h.created_at,
+                battery: h.battery_level,
+                coords: {
+                    latitude: h.latitude,
+                    longitude: h.longitude
+                }
+            }));
+        } catch (error) {
+            console.error('Error fetching location history:', error);
+            return [];
+        }
+    },
+
+    /**
+     * Delete a specific location history record
+     */
+    deleteLocation: async (id: string): Promise<boolean> => {
+        try {
+            const { error } = await supabase
+                .from('location_history')
+                .delete()
+                .eq('id', id);
+
+            if (error) throw error;
+            return true;
+        } catch (error) {
+            console.error('Error deleting location:', error);
+            return false;
+        }
+    },
+
+    /**
+     * Clear all location history for a user
+     */
+    clearLocationHistory: async (userId: string): Promise<boolean> => {
+        try {
+            const { error } = await supabase
+                .from('location_history')
+                .delete()
+                .eq('user_id', userId);
+
+            if (error) throw error;
+
+            // Also clear the user_status 'last_updated' to reflect no recent activity
+            // Using a very old date (1970) to trigger the >24h check immediately
+            const { error: statusError } = await supabase
+                .from('user_status')
+                .update({
+                    last_updated: '1970-01-01T00:00:00Z',
+                    status_text: 'Inactive',
+                    is_online: false
+                })
+                .eq('user_id', userId);
+
+            if (statusError) {
+                console.error('Error clearing user status:', statusError);
+                // Don't throw here, as history deletion succeeded
+            }
+
+            return true;
+        } catch (error) {
+            console.error('Error clearing location history:', error);
+            return false;
+        }
+    },
 };

@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Navigation } from '@tamagui/lucide-icons';
 import * as Location from 'expo-location';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
@@ -11,6 +10,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useThemeContext } from '../../context/ThemeContext'; // Updated import
 import { FamilyMember, FamilyService } from '../../services/FamilyService'; // Updated import
 import { UserService } from '../../services/UserService';
+import { toThaiDateTime } from '../../utils/dateTime';
 
 export default function MapScreen() {
     const params = useLocalSearchParams();
@@ -108,19 +108,19 @@ export default function MapScreen() {
             if (session?.user?.id) {
                 const { latitude, longitude } = loc.coords;
 
-                // Update local state for "You" marker
+                // Update local state for "You" marker (Show where I am now)
                 setDbLocation({ latitude, longitude });
-                setLastCheckIn(new Date().toLocaleString('th-TH'));
+                // setLastCheckIn(nowThaiFormatted()); // Don't update check-in time automatically
 
-                // Update DB
-                await UserService.updateStatus(session.user.id, {
-                    latitude,
-                    longitude,
-                    status_text: 'Active', // Default status
-                    is_online: true,
-                    battery_level: 100, // TODO: Get real battery
-                    last_updated: new Date().toISOString()
-                });
+                // Update DB - DISABLED (User requested manual check-in only)
+                // await UserService.updateStatus(session.user.id, {
+                //     latitude,
+                //     longitude,
+                //     // status_text: 'Active', // Don't overwrite status
+                //     is_online: true,
+                //     battery_level: 100, // TODO: Get real battery
+                //     last_updated: new Date().toISOString()
+                // });
             }
         };
 
@@ -142,7 +142,7 @@ export default function MapScreen() {
                                 longitude: newData.longitude
                             },
                             status: newData.status_text,
-                            lastCheckIn: new Date(newData.last_updated).toLocaleString('th-TH'),
+                            lastCheckIn: toThaiDateTime(newData.last_updated),
                             batteryLevel: newData.battery_level,
                             isOnline: newData.is_online,
                             // Keep existing fields
@@ -175,20 +175,16 @@ export default function MapScreen() {
     const loadData = async () => {
         setLoading(true);
         try {
-            // 1. Load User's last location
-            const savedLocation = await AsyncStorage.getItem('last_location');
-            const savedAvatar = await AsyncStorage.getItem('user_avatar');
-            const historyData = await AsyncStorage.getItem('history_log');
+            // 1. Load User's profile from Supabase
+            if (session?.user?.id) {
+                const profile = await UserService.getProfile(session.user.id);
+                if (profile) {
+                    setAvatar(profile.avatar_url);
+                }
 
-            if (savedLocation) {
-                setDbLocation(JSON.parse(savedLocation));
-            }
-            if (savedAvatar) {
-                setAvatar(savedAvatar);
-            }
-            if (historyData) {
-                const history = JSON.parse(historyData);
-                if (history.length > 0) {
+                // Load History from Supabase
+                const history = await FamilyService.getLocationHistory(session.user.id, 1);
+                if (history && history.length > 0) {
                     setLastCheckIn(history[0].date);
                 }
             }
@@ -206,13 +202,12 @@ export default function MapScreen() {
                         focusLocation(target.location!.latitude, target.location!.longitude);
                     }, 500); // Delay for map load
                 }
-            } else if (savedLocation && mapRef.current) {
-                // Default to user location
-                const userLoc = JSON.parse(savedLocation);
+            } else if (dbLocation && mapRef.current) {
+                // Default to user location (using state instead of AsyncStorage)
                 setTimeout(() => {
                     mapRef.current?.animateToRegion({
-                        latitude: userLoc.latitude,
-                        longitude: userLoc.longitude,
+                        latitude: dbLocation.latitude,
+                        longitude: dbLocation.longitude,
                         latitudeDelta: 0.05,
                         longitudeDelta: 0.05,
                     }, 1000);
@@ -292,15 +287,24 @@ export default function MapScreen() {
                         coordinate={dbLocation}
                         title="คุณ (ล่าสุด)"
                         description={`เช็คอินเมื่อ: ${lastCheckIn}`}
-                        zIndex={2}
+                        zIndex={selectedMemberId === session?.user?.id ? 10 : 2}
+                        onPress={() => {
+                            if (session?.user?.id) {
+                                if (selectedMemberId === session.user.id) {
+                                    setSelectedMemberId(null);
+                                } else {
+                                    setSelectedMemberId(session.user.id);
+                                }
+                            }
+                        }}
                     >
                         <YStack
                             width={48}
                             height={48}
                             borderRadius={24}
-                            backgroundColor="$green5"
+                            backgroundColor={selectedMemberId === session?.user?.id ? "$green5" : "transparent"}
                             borderWidth={3}
-                            borderColor="$green9"
+                            borderColor={selectedMemberId === session?.user?.id ? "$green9" : "transparent"}
                             elevation={5}
                             alignItems="center"
                             justifyContent="center"
@@ -332,7 +336,13 @@ export default function MapScreen() {
                                 coordinate={member.location}
                                 title={member.name}
                                 description={`${member.status} (${member.lastCheckIn})`}
-                                onPress={() => handleMemberSelect(member.id, member.location!.latitude, member.location!.longitude)}
+                                onPress={() => {
+                                    if (isSelected) {
+                                        setSelectedMemberId(null);
+                                    } else {
+                                        handleMemberSelect(member.id, member.location!.latitude, member.location!.longitude);
+                                    }
+                                }}
                                 zIndex={isSelected ? 10 : 1}
                             >
                                 <YStack
@@ -434,15 +444,24 @@ export default function MapScreen() {
                     <XStack gap="$4" alignItems="center">
                         {/* User Button */}
                         {dbLocation && (
-                            <YStack alignItems="center" gap="$2" onPress={() => focusLocation(dbLocation.latitude, dbLocation.longitude)}>
+                            <YStack alignItems="center" gap="$2" onPress={() => {
+                                if (session?.user?.id) {
+                                    if (selectedMemberId === session.user.id) {
+                                        setSelectedMemberId(null);
+                                    } else {
+                                        setSelectedMemberId(session.user.id);
+                                        focusLocation(dbLocation.latitude, dbLocation.longitude);
+                                    }
+                                }
+                            }}>
                                 <YStack
                                     width={56} height={56}
                                     borderRadius={28}
-                                    backgroundColor="$green5"
+                                    backgroundColor={selectedMemberId === session?.user?.id ? "$green5" : "$gray5"}
                                     alignItems="center"
                                     justifyContent="center"
                                     borderWidth={3}
-                                    borderColor="$green9"
+                                    borderColor={selectedMemberId === session?.user?.id ? "$green9" : "transparent"}
                                 >
                                     {(avatar.startsWith('http') || avatar.startsWith('file')) ? (
                                         <RNImage
@@ -453,7 +472,7 @@ export default function MapScreen() {
                                         <Text fontSize={28}>{avatar}</Text>
                                     )}
                                 </YStack>
-                                <Text fontSize="$2" color="$color" fontWeight="600">คุณ</Text>
+                                <Text fontSize="$2" color={selectedMemberId === session?.user?.id ? "$green9" : "$color"} fontWeight="600">คุณ</Text>
                             </YStack>
                         )}
 
@@ -468,7 +487,15 @@ export default function MapScreen() {
                                     key={member.id}
                                     alignItems="center"
                                     gap="$2"
-                                    onPress={() => member.location && handleMemberSelect(member.id, member.location.latitude, member.location.longitude)}
+                                    onPress={() => {
+                                        if (member.location) {
+                                            if (isSelected) {
+                                                setSelectedMemberId(null);
+                                            } else {
+                                                handleMemberSelect(member.id, member.location.latitude, member.location.longitude);
+                                            }
+                                        }
+                                    }}
                                     opacity={member.location ? 1 : 0.6}
                                     scale={isSelected ? 1.05 : 1}
                                     // @ts-ignore
